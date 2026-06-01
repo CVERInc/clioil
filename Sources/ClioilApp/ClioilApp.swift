@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ClioilCore
 
 // Native surface over ClioilCore — reepub-styled (deep teal, mint, teal accent).
@@ -24,15 +25,28 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(projects, selection: $selected) { p in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(p.name).font(.headline).foregroundStyle(Color.reefMint)
-                    Text("v\(p.version) · \(p.displayPath)")
-                        .font(.caption).foregroundStyle(Color.reefTextDim)
+            List {
+                ForEach(projects) { p in
+                    let isSel = p.id == selected
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(p.name).font(.headline)
+                            .foregroundStyle(isSel ? Color.white : Color.reefMint)
+                        Text("v\(p.version) · \(p.displayPath)")
+                            .font(.caption)
+                            .foregroundStyle(isSel ? Color.white.opacity(0.85) : Color.reefTextDim)
+                    }
+                    .padding(.vertical, 5).padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .listRowBackground(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isSel ? Color.reefTeal : Color.clear)
+                            .padding(.vertical, 1)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selected = p.id }
                 }
-                .padding(.vertical, 2)
-                .listRowBackground(Color.clear)
             }
+            .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(Color.reefDeep)
             .navigationTitle("clioil")
@@ -162,10 +176,24 @@ struct ProjectDetailView: View {
             }
 
             if !publisher.log.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(Array(publisher.log.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.system(.caption, design: .monospaced)).foregroundStyle(Color.reefText)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Spacer()
+                        Button { copyLog() } label: {
+                            Label(t.copyButton(), systemImage: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .foregroundStyle(Color.reefMint)
                     }
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(publisher.log.enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(Color.reefText)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,6 +209,7 @@ struct ProjectDetailView: View {
                         Text("→ \(step)").font(.caption).foregroundStyle(Color.reefText)
                     }
                 }
+                .textSelection(.enabled)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.reefAmber.opacity(0.12))
@@ -196,6 +225,17 @@ struct ProjectDetailView: View {
             Image(systemName: icon).foregroundStyle(color)
         }
         .font(.callout)
+    }
+
+    private func copyLog() {
+        var lines = publisher.log
+        if let a = publisher.advice {
+            lines.append(a.title)
+            lines.append(contentsOf: a.steps)
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(lines.joined(separator: "\n"), forType: .string)
     }
 
     private func loadStatus() async {

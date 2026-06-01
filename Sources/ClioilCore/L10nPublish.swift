@@ -122,6 +122,18 @@ extension L10n {
         }
     }
 
+    public func copyButton() -> String {
+        switch language {
+        case .en:   return "Copy"
+        case .es:   return "Copiar"
+        case .ja:   return "コピー"
+        case .zhTW: return "複製"
+        case .ko:   return "복사"
+        case .fr:   return "Copier"
+        case .de:   return "Kopieren"
+        }
+    }
+
     public func publishButton() -> String {
         switch language {
         case .en:   return "Publish to npm"

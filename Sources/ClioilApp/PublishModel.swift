@@ -71,6 +71,11 @@ final class PublishModel: ObservableObject {
             }
             finish(true)
         } else {
+            // Surface npm's actual error so it's visible (and copyable), not hidden.
+            let tail = (result.stdout + "\n" + result.stderr)
+                .split(whereSeparator: \.isNewline)
+                .suffix(12)
+            for line in tail { log.append("  \(line)") }
             advice = ErrorAdvisor(t).advise(stdout: result.stdout, stderr: result.stderr)
             finish(false)
         }
