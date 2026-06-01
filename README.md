@@ -82,8 +82,8 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] CI — `swift build` + tests on every push/PR
 - [x] `clioil publish` — guided flow (install → test → pack preview → publish → tag), `--dry-run` + power-user flags
 - [x] `ErrorAdvisor` — localized, actionable guidance on publish failures (7 langs)
-- [x] **SwiftUI app (v1)** — `ClioilApp`: browse projects + see release readiness (`swift run ClioilApp`)
-- [ ] App: publish *from* the GUI; menu-bar (MenuBarExtra) mode
+- [x] **SwiftUI app** — `ClioilApp`: browse projects, see readiness, and **publish from the window** (reepub-themed). Double-clickable `.app` via `scripts/build-app.sh`.
+- [ ] App: menu-bar (MenuBarExtra) mode; live-streaming publish log
 - [ ] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
       translate ugly registry errors into plain-language next steps, classify known
       failure modes (version exists / not logged in / missing access), draft changelogs.

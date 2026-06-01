@@ -1,15 +1,17 @@
 import SwiftUI
 import ClioilCore
 
-// The native surface over ClioilCore. v1: browse your publishable projects and
-// see each one's release readiness at a glance. Same engine as the CLI.
+// Native surface over ClioilCore — reepub-styled (deep teal, mint, teal accent).
+// Browse projects, see readiness, and publish right from the window.
 
 @main
 struct ClioilApp: App {
     var body: some Scene {
         WindowGroup("clioil") {
             ContentView()
-                .frame(minWidth: 560, minHeight: 400)
+                .frame(minWidth: 640, minHeight: 460)
+                .preferredColorScheme(.dark)
+                .tint(.reefTeal)
         }
         .windowResizability(.contentSize)
     }
@@ -18,102 +20,190 @@ struct ClioilApp: App {
 struct ContentView: View {
     @State private var projects: [Project] = []
     @State private var selected: Project.ID?
-    @State private var status: ProjectStatus?
-    @State private var loading = false
-
     private let t = L10n(Language.detect())
 
     var body: some View {
         NavigationSplitView {
             List(projects, selection: $selected) { p in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(p.name).font(.headline)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(p.name).font(.headline).foregroundStyle(Color.reefMint)
                     Text("v\(p.version) · \(p.displayPath)")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Color.reefTextDim)
                 }
+                .padding(.vertical, 2)
+                .listRowBackground(Color.clear)
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.reefDeep)
             .navigationTitle("clioil")
-            .frame(minWidth: 220)
+            .frame(minWidth: 240)
         } detail: {
-            detail
-        }
-        .onAppear(perform: loadProjects)
-        .onChange(of: selected) { _ in loadStatus() }
-    }
-
-    @ViewBuilder
-    private var detail: some View {
-        if let project = projects.first(where: { $0.id == selected }) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(project.name).font(.title2).bold()
-                    Text(project.displayPath).font(.callout).foregroundStyle(.secondary)
-                    Divider()
-
-                    if loading {
-                        HStack { ProgressView(); Text("…") }
-                    } else if let s = status {
-                        row("shippingbox",
-                            "\(t.statusOnNpm()): \(s.registryLatest ?? t.statusUnpublished())")
-                        row(s.currentIsPublished ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
-                            s.currentIsPublished
-                                ? t.statusAlreadyPublished(project.version)
-                                : t.statusReadyToPublish(project.version))
-                        if s.isGitRepo {
-                            row(s.gitDirty ? "exclamationmark.triangle.fill" : "checkmark.seal.fill",
-                                s.gitDirty ? t.statusGitDirty() : t.statusGitClean())
-                            if let tag = s.lastTag {
-                                Text(s.changesSinceTag.isEmpty
-                                     ? t.statusNoChangesSince(tag)
-                                     : t.statusChangesSince(tag, s.changesSinceTag.count))
-                                    .font(.callout).padding(.top, 4)
-                                ForEach(Array(s.changesSinceTag.prefix(15)), id: \.self) { c in
-                                    Text("• \(c)").font(.caption).foregroundStyle(.secondary)
-                                }
-                            } else {
-                                Text(t.statusNoTag()).font(.callout)
-                            }
-                        } else {
-                            row("xmark.circle", t.statusNotGitRepo())
-                        }
+            Group {
+                if let project = projects.first(where: { $0.id == selected }) {
+                    ProjectDetailView(project: project, t: t).id(project.id)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 34)).foregroundStyle(Color.reefTeal)
+                        Text(t.projectsHeader(projects.count)).foregroundStyle(Color.reefTextDim)
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else {
-            Text(t.projectsHeader(projects.count))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.reefGround)
         }
+        .onAppear(perform: load)
     }
 
-    private func row(_ icon: String, _ text: String) -> some View {
-        Label(text, systemImage: icon).font(.callout)
-    }
-
-    private func loadProjects() {
+    private func load() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let roots = [home, home.appendingPathComponent("Desktop/GitHub")]
-        projects = ProjectScanner(roots: roots, maxDepth: 1)
+        projects = ProjectScanner(roots: [home, home.appendingPathComponent("Desktop/GitHub")], maxDepth: 1)
             .scan()
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
     }
+}
 
-    private func loadStatus() {
-        guard let project = projects.first(where: { $0.id == selected }) else {
-            status = nil
-            return
+struct ProjectDetailView: View {
+    let project: Project
+    let t: L10n
+    @State private var status: ProjectStatus?
+    @State private var loading = true
+    @State private var bump: Bump = .none
+    @StateObject private var publisher = PublishModel()
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                divider
+                statusSection
+                divider
+                publishSection
+                Spacer(minLength: 0)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        loading = true
-        status = nil
-        Task.detached {
-            let result = StatusService().status(of: project)
-            await MainActor.run {
-                self.status = result
-                self.loading = false
+        .task { await loadStatus() }
+    }
+
+    private var divider: some View { Rectangle().fill(Color.reefBorder).frame(height: 1) }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(project.name).font(.title2).bold().foregroundStyle(Color.reefMint)
+            Text("v\(project.version) · \(project.displayPath)")
+                .font(.callout).foregroundStyle(Color.reefTextDim)
+        }
+    }
+
+    @ViewBuilder private var statusSection: some View {
+        if loading {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("…").foregroundStyle(Color.reefTextDim)
+            }
+        } else if let s = status {
+            row("shippingbox", "\(t.statusOnNpm()): \(s.registryLatest ?? t.statusUnpublished())", .reefText)
+            if s.currentIsPublished {
+                row("exclamationmark.triangle.fill", t.statusAlreadyPublished(project.version), .reefAmber)
+            } else {
+                row("checkmark.circle.fill", t.statusReadyToPublish(project.version), .reefGreen)
+            }
+            if s.isGitRepo {
+                row(s.gitDirty ? "exclamationmark.triangle.fill" : "checkmark.seal.fill",
+                    s.gitDirty ? t.statusGitDirty() : t.statusGitClean(),
+                    s.gitDirty ? .reefAmber : .reefGreen)
+                if let tag = s.lastTag {
+                    Text(s.changesSinceTag.isEmpty
+                         ? t.statusNoChangesSince(tag)
+                         : t.statusChangesSince(tag, s.changesSinceTag.count))
+                        .font(.callout).foregroundStyle(Color.reefText).padding(.top, 2)
+                    ForEach(Array(s.changesSinceTag.prefix(12)), id: \.self) { c in
+                        Text("• \(c)").font(.caption).foregroundStyle(Color.reefTextDim)
+                    }
+                } else {
+                    Text(t.statusNoTag()).font(.callout).foregroundStyle(Color.reefTextDim)
+                }
+            } else {
+                row("xmark.circle", t.statusNotGitRepo(), .reefTextDim)
             }
         }
+    }
+
+    private var publishSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("", selection: $bump) {
+                Text("—").tag(Bump.none)
+                Text("patch").tag(Bump.patch)
+                Text("minor").tag(Bump.minor)
+                Text("major").tag(Bump.major)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(publisher.running)
+
+            Button {
+                publisher.run(project: project, bump: bump, t: t)
+            } label: {
+                Label(t.publishButton(), systemImage: "paperplane.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.reefTeal)
+            .controlSize(.large)
+            .disabled(publisher.running)
+
+            if publisher.running {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(t.publishAuthInBrowser()).font(.caption).foregroundStyle(Color.reefTextDim)
+                }
+            }
+
+            if !publisher.log.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(publisher.log.enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.system(.caption, design: .monospaced)).foregroundStyle(Color.reefText)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(hex: 0x031c1c))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            if let a = publisher.advice {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(a.title, systemImage: "lightbulb.fill")
+                        .foregroundStyle(Color.reefAmber).font(.callout.bold())
+                    ForEach(a.steps, id: \.self) { step in
+                        Text("→ \(step)").font(.caption).foregroundStyle(Color.reefText)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.reefAmber.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private func row(_ icon: String, _ text: String, _ color: Color) -> some View {
+        Label {
+            Text(text).foregroundStyle(Color.reefText)
+        } icon: {
+            Image(systemName: icon).foregroundStyle(color)
+        }
+        .font(.callout)
+    }
+
+    private func loadStatus() async {
+        loading = true
+        let project = self.project
+        status = await Task.detached(priority: .userInitiated) {
+            StatusService().status(of: project)
+        }.value
+        loading = false
     }
 }

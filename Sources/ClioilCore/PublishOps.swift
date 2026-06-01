@@ -73,4 +73,20 @@ public struct PublishOps: Sendable {
     public func isLoggedIn(_ project: Project) -> Bool {
         Shell.run(["npm", "whoami"], cwd: project.path).ok
     }
+
+    // MARK: captured variants (for the GUI — output is shown in-app, not on a TTY)
+
+    public func runInstallCaptured(_ project: Project) -> Shell.Result {
+        Shell.run(["npm", "install"], cwd: project.path)
+    }
+
+    public func runTestCaptured(_ project: Project) -> Shell.Result {
+        Shell.run(["npm", "test"], cwd: project.path)
+    }
+
+    /// Real publish, output captured. npm still opens the browser for passkey
+    /// auth itself, so web-auth works even though we don't inherit the TTY.
+    public func publishCaptured(_ project: Project) -> Shell.Result {
+        Shell.run(["npm", "publish", "--auth-type=web", "--access", "public"], cwd: project.path)
+    }
 }

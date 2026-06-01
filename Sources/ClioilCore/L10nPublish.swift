@@ -122,6 +122,30 @@ extension L10n {
         }
     }
 
+    public func publishButton() -> String {
+        switch language {
+        case .en:   return "Publish to npm"
+        case .es:   return "Publicar en npm"
+        case .ja:   return "npm に公開"
+        case .zhTW: return "發布到 npm"
+        case .ko:   return "npm에 배포"
+        case .fr:   return "Publier sur npm"
+        case .de:   return "Auf npm veröffentlichen"
+        }
+    }
+
+    public func publishAuthInBrowser() -> String {
+        switch language {
+        case .en:   return "Complete the passkey sign-in in your browser…"
+        case .es:   return "Completa el inicio de sesión con passkey en tu navegador…"
+        case .ja:   return "ブラウザでパスキー認証を完了してください…"
+        case .zhTW: return "請在瀏覽器完成 passkey 驗證…"
+        case .ko:   return "브라우저에서 패스키 로그인을 완료하세요…"
+        case .fr:   return "Terminez la connexion par passkey dans votre navigateur…"
+        case .de:   return "Schließe die Passkey-Anmeldung in deinem Browser ab…"
+        }
+    }
+
     public func publishAlreadyBlocked(_ ver: String) -> String {
         switch language {
         case .en:   return "v\(ver) is already on npm — bump first (e.g. `--bump patch`) or it will fail."
