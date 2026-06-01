@@ -23,6 +23,7 @@ swift run clioil list                       # scan & list publishable projects (
 swift run clioil status <project>           # read-only release-readiness report
 swift run clioil publish <project> --dry-run # guided publish, stops before the real publish
 swift run clioil --version
+swift run ClioilApp                         # native SwiftUI app: browse projects + readiness
 swift run ClioilTests                       # framework-free test runner (no Xcode required)
 ```
 
@@ -81,7 +82,8 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] CI — `swift build` + tests on every push/PR
 - [x] `clioil publish` — guided flow (install → test → pack preview → publish → tag), `--dry-run` + power-user flags
 - [x] `ErrorAdvisor` — localized, actionable guidance on publish failures (7 langs)
-- [ ] **MenuBarExtra app** — the native "pick a project, ship it" surface
+- [x] **SwiftUI app (v1)** — `ClioilApp`: browse projects + see release readiness (`swift run ClioilApp`)
+- [ ] App: publish *from* the GUI; menu-bar (MenuBarExtra) mode
 - [ ] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
       translate ugly registry errors into plain-language next steps, classify known
       failure modes (version exists / not logged in / missing access), draft changelogs.
