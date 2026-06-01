@@ -2,10 +2,12 @@ import Foundation
 import ClioilCore
 
 // clioil — CLI shell over ClioilCore.
-//   clioil list                 list publishable projects
-//   clioil status [project]     read-only release readiness report
+//   clioil list                  list publishable projects
+//   clioil status  [project]     read-only release-readiness report
+//   clioil publish [project]     guided publish (install → test → preview → publish)
 //   clioil help | --version
 // Global flags: --lang=<code>, --json
+// publish flags: --dry-run, --bump <patch|minor|major>, --no-test, --no-install, --yes
 
 let home = FileManager.default.homeDirectoryForCurrentUser
 let defaultRoots = [home, home.appendingPathComponent("Desktop/GitHub")]
@@ -16,6 +18,11 @@ struct CLIOptions {
     var langOverride: String?
     var json = false
     var showVersion = false
+    var dryRun = false
+    var noTest = false
+    var noInstall = false
+    var yes = false
+    var bump: Bump?
     var positional: [String] = []
 }
 
@@ -26,16 +33,20 @@ func parse(_ argv: [String]) -> CLIOptions {
         let a = argv[i]
         switch true {
         case a == "--lang" || a == "-l":
-            i += 1
-            if i < argv.count { o.langOverride = argv[i] }
+            i += 1; if i < argv.count { o.langOverride = argv[i] }
         case a.hasPrefix("--lang="):
             o.langOverride = String(a.dropFirst("--lang=".count))
-        case a == "--json":
-            o.json = true
-        case a == "--version" || a == "-V":
-            o.showVersion = true
-        default:
-            o.positional.append(a)
+        case a == "--bump":
+            i += 1; if i < argv.count { o.bump = Bump(rawValue: argv[i]) }
+        case a.hasPrefix("--bump="):
+            o.bump = Bump(rawValue: String(a.dropFirst("--bump=".count)))
+        case a == "--json":      o.json = true
+        case a == "--dry-run":   o.dryRun = true
+        case a == "--no-test":   o.noTest = true
+        case a == "--no-install": o.noInstall = true
+        case a == "--yes" || a == "-y": o.yes = true
+        case a == "--version" || a == "-V": o.showVersion = true
+        default: o.positional.append(a)
         }
         i += 1
     }
@@ -51,10 +62,10 @@ func pad(_ s: String, _ width: Int) -> String {
 func printJSON<T: Encodable>(_ value: T) {
     let enc = JSONEncoder()
     enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    if let data = try? enc.encode(value), let s = String(data: data, encoding: .utf8) {
-        print(s)
-    }
+    if let data = try? enc.encode(value), let s = String(data: data, encoding: .utf8) { print(s) }
 }
+
+func eprint(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 
 func allProjects() -> [Project] {
     ProjectScanner(roots: defaultRoots, maxDepth: 1)
@@ -62,31 +73,29 @@ func allProjects() -> [Project] {
         .sorted { $0.name.lowercased() < $1.name.lowercased() }
 }
 
-/// Resolve a project from an optional name selector. Prints a helpful message
-/// and exits when the selector is missing/ambiguous.
+/// Resolve a project from a name *or* path fragment. Exits with a helpful list
+/// when missing or ambiguous — important for publish, where the wrong target is
+/// dangerous (e.g. two `bleedblend` checkouts).
 func resolveProject(_ selector: String?, _ t: L10n) -> Project {
     let projects = allProjects()
-    if projects.isEmpty {
-        FileHandle.standardError.write(Data((t.noProjectsFound() + "\n").utf8))
-        exit(1)
-    }
+    if projects.isEmpty { eprint(t.noProjectsFound()); exit(1) }
     guard let selector else {
         if projects.count == 1 { return projects[0] }
-        printPickOne(projects)
-        exit(1)
+        printPickOne(projects); exit(1)
     }
     let needle = selector.lowercased()
-    let exact = projects.filter { $0.name.lowercased() == needle }
-    let matches = exact.isEmpty ? projects.filter { $0.name.lowercased().contains(needle) } : exact
+    func broad(_ p: Project) -> Bool {
+        p.name.lowercased().contains(needle) || p.path.path.lowercased().contains(needle)
+    }
+    var matches = projects.filter(broad)
+    if matches.count > 1 {
+        let exact = projects.filter { $0.name.lowercased() == needle || $0.path.path.lowercased() == needle }
+        if exact.count == 1 { matches = exact }
+    }
     switch matches.count {
     case 1: return matches[0]
-    case 0:
-        FileHandle.standardError.write(Data("✗ \(selector) — \(t.unknownCommand(selector))\n".utf8))
-        printPickOne(projects)
-        exit(1)
-    default:
-        printPickOne(matches)
-        exit(1)
+    case 0: eprint("✗ \(selector)"); printPickOne(projects); exit(1)
+    default: printPickOne(matches); exit(1)
     }
 }
 
@@ -100,9 +109,7 @@ func cmdList(_ t: L10n, json: Bool) {
     let projects = allProjects()
     if json { printJSON(projects); return }
     guard !projects.isEmpty else {
-        print(t.noProjectsFound())
-        for r in defaultRoots { print("  • \(r.path)") }
-        exit(1)
+        print(t.noProjectsFound()); for r in defaultRoots { print("  • \(r.path)") }; exit(1)
     }
     print(t.projectsHeader(projects.count))
     print(String(repeating: "─", count: 48))
@@ -122,11 +129,7 @@ func cmdStatus(_ t: L10n, json: Bool, selector: String?) {
     print("  " + (s.currentIsPublished
         ? t.statusAlreadyPublished(project.version)
         : t.statusReadyToPublish(project.version)))
-
-    if !s.isGitRepo {
-        print("  \(t.statusNotGitRepo())")
-        return
-    }
+    if !s.isGitRepo { print("  \(t.statusNotGitRepo())"); return }
     print("  " + (s.gitDirty ? "⚠ " + t.statusGitDirty() : t.statusGitClean()))
     if let tag = s.lastTag {
         if s.changesSinceTag.isEmpty {
@@ -136,8 +139,99 @@ func cmdStatus(_ t: L10n, json: Bool, selector: String?) {
             for c in s.changesSinceTag.prefix(20) { print("    • \(c)") }
             if s.changesSinceTag.count > 20 { print("    …") }
         }
-    } else {
-        print("  \(t.statusNoTag())")
+    } else { print("  \(t.statusNoTag())") }
+}
+
+func cmdPublish(_ t: L10n, opts: CLIOptions, selector: String?) {
+    let project = resolveProject(selector, t)
+    let ops = PublishOps()
+    let advisor = ErrorAdvisor(t)
+    let sep = String(repeating: "─", count: 48)
+    var version = project.version
+
+    func showAdvice(_ kind: PublishErrorKind) {
+        let a = advisor.advise(kind)
+        print("  ✗ \(a.title)")
+        for s in a.steps { print("    → \(s)") }
+    }
+
+    print("\(project.name)   v\(version)   \(project.displayPath)")
+    print(sep)
+
+    // 1. bump (optional)
+    if let level = opts.bump {
+        guard let newVer = ops.bump(project, level) else {
+            eprint("✗ npm version \(level.rawValue)"); exit(1)
+        }
+        version = newVer
+        print("  \(t.publishBumpedTo(version))")
+    }
+
+    // 2. pre-flight: refuse to even try if this version is already published
+    if NpmPublisher().versionExists(version, of: project) {
+        print("  ⚠ \(t.publishAlreadyBlocked(version))")
+        showAdvice(.versionExists)
+        exit(1)
+    }
+
+    // 3. install if needed
+    if !opts.noInstall && ops.needsInstall(project) {
+        print("  \(t.publishInstalling())")
+        _ = ops.runInstall(project)
+        print(sep)
+    }
+
+    // 4. test
+    if !opts.noTest && ops.hasRealTestScript(project) {
+        print("  \(t.publishTesting())")
+        if ops.runTest(project) == 0 {
+            print("  \(t.publishTestPassed())")
+        } else {
+            print("  \(t.publishTestFailed())")
+            if !opts.yes {
+                print("  (yes / Enter→cancel)")
+                let line = readLine()?.trimmingCharacters(in: .whitespaces).lowercased()
+                if line != "yes" && line != "y" { print("  \(t.publishAborted())"); exit(0) }
+            }
+        }
+        print(sep)
+    }
+
+    // 5. pack preview
+    print("  \(t.publishPackPreview())")
+    for line in ops.packPreview(project).prefix(40) { print("    \(line)") }
+    print(sep)
+
+    // 6. dry run stops here — fully safe
+    if opts.dryRun { print("  \(t.publishDryRunDone())"); return }
+
+    // 7. confirm + real publish (interactive browser auth)
+    if !opts.yes {
+        print("  \(t.publishConfirm(project.name, version))")
+        if readLine() == nil { print("  \(t.publishAborted())"); exit(0) }
+    }
+    print(sep)
+    let code = ops.publish(project)
+    print(sep)
+    guard code == 0 else {
+        // Diagnose without captured output: check auth, then version-exists.
+        let kind: PublishErrorKind =
+            !ops.isLoggedIn(project) ? .notLoggedIn
+            : NpmPublisher().versionExists(version, of: project) ? .versionExists
+            : .unknown
+        showAdvice(kind)
+        exit(1)
+    }
+
+    print("  \(t.publishSuccess(project.name, version))")
+
+    // 8. record the bump in git (only if we bumped and it's a repo)
+    if opts.bump != nil, Git.isRepo(project.path) {
+        if Git.commit(project.path, message: "release v\(version)",
+                      paths: ["package.json", "package-lock.json", "npm-shrinkwrap.json"]) {
+            Git.tag(project.path, "v\(version)")
+            print("  → git commit + tag v\(version)  (git push --follow-tags)")
+        }
     }
 }
 
@@ -146,21 +240,15 @@ func cmdStatus(_ t: L10n, json: Bool, selector: String?) {
 let opts = parse(CommandLine.arguments)
 let t = L10n(Language.detect(override: opts.langOverride))
 
-if opts.showVersion {
-    print("clioil \(Clioil.version)")
-    exit(0)
-}
+if opts.showVersion { print("clioil \(Clioil.version)"); exit(0) }
+
+func arg(_ n: Int) -> String? { opts.positional.count > n ? opts.positional[n] : nil }
 
 switch opts.positional.first ?? "list" {
-case "list":
-    cmdList(t, json: opts.json)
-case "status":
-    cmdStatus(t, json: opts.json, selector: opts.positional.count > 1 ? opts.positional[1] : nil)
-case "help", "-h", "--help":
-    print(t.help())
+case "list":    cmdList(t, json: opts.json)
+case "status":  cmdStatus(t, json: opts.json, selector: arg(1))
+case "publish": cmdPublish(t, opts: opts, selector: arg(1))
+case "help", "-h", "--help": print(t.help())
 case let other:
-    print(t.unknownCommand(other))
-    print("")
-    print(t.help())
-    exit(1)
+    print(t.unknownCommand(other)); print(""); print(t.help()); exit(1)
 }

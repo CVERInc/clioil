@@ -19,11 +19,20 @@ This is the engine's first vertical slice. Working today:
 
 ```bash
 swift build
-swift run clioil list                  # scan & list publishable projects (pure Swift, no node needed)
-swift run clioil status <project>      # read-only release-readiness report
+swift run clioil list                       # scan & list publishable projects (pure Swift, no node needed)
+swift run clioil status <project>           # read-only release-readiness report
+swift run clioil publish <project> --dry-run # guided publish, stops before the real publish
 swift run clioil --version
-swift run ClioilTests                  # framework-free test runner (no Xcode required)
+swift run ClioilTests                       # framework-free test runner (no Xcode required)
 ```
+
+`publish` walks the whole flow — install deps if needed → run tests → preview
+the tarball → confirm → `npm publish` (browser passkey auth) → git commit+tag a
+bump. Beginner-friendly by default (guided, confirms, explains); power users can
+drive it non-interactively: `--bump <patch|minor|major>`, `--no-test`,
+`--no-install`, `--yes`, `--dry-run`. On failure it prints localized, actionable
+guidance instead of a raw npm stack (`ErrorAdvisor`). The real publish is the
+only irreversible step and always requires explicit confirmation.
 
 `status` shows, for a project: its npm latest, whether the local version is
 already published (so you know a publish would fail), whether the git tree is
@@ -70,7 +79,8 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] Localized UI — 7 languages, auto-detected, compiler-enforced completeness
 - [x] CLI `status` — read-only release-readiness report (+ `--json`, `--version`)
 - [x] CI — `swift build` + tests on every push/PR
-- [ ] Engine: publish plan (bump → test → pack preview → publish → tag) ported from the prototype
+- [x] `clioil publish` — guided flow (install → test → pack preview → publish → tag), `--dry-run` + power-user flags
+- [x] `ErrorAdvisor` — localized, actionable guidance on publish failures (7 langs)
 - [ ] **MenuBarExtra app** — the native "pick a project, ship it" surface
 - [ ] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
       translate ugly registry errors into plain-language next steps, classify known

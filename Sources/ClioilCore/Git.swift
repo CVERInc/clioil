@@ -28,4 +28,21 @@ public enum Git {
             .split(whereSeparator: \.isNewline)
             .map { String($0) }
     }
+
+    // MARK: mutating (used only to record a version bump after a real publish)
+
+    /// Stage the given (existing) paths and commit. Returns true on success.
+    @discardableResult
+    public static func commit(_ dir: URL, message: String, paths: [String]) -> Bool {
+        let fm = FileManager.default
+        for p in paths where fm.fileExists(atPath: dir.appendingPathComponent(p).path) {
+            _ = Shell.run(["git", "add", p], cwd: dir)
+        }
+        return Shell.run(["git", "commit", "-m", message], cwd: dir).ok
+    }
+
+    @discardableResult
+    public static func tag(_ dir: URL, _ name: String) -> Bool {
+        Shell.run(["git", "tag", name], cwd: dir).ok
+    }
 }

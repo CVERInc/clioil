@@ -177,5 +177,47 @@ for lang in Language.allCases {
     }
 }
 
+print("PublishOps decision logic (filesystem, no npm)")
+do {
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appendingPathComponent("clioil-pub-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: dir) }
+    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    func write(_ name: String, _ body: String) throws {
+        try body.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    try write("package.json", #"{"name":"x","version":"1.0.0","scripts":{"test":"vitest run"}}"#)
+    let proj = Project(path: dir, name: "x", version: "1.0.0", ecosystem: "npm")
+    let ops = PublishOps()
+
+    check(ops.needsInstall(proj), "no node_modules → needs install")
+    check(ops.hasRealTestScript(proj), "real test script detected")
+
+    try fm.createDirectory(at: dir.appendingPathComponent("node_modules"), withIntermediateDirectories: true)
+    check(!ops.needsInstall(proj), "with node_modules (fresh) → no install needed")
+
+    // npm placeholder test script is not "real"
+    try write("package.json", #"{"name":"x","version":"1.0.0","scripts":{"test":"echo \"Error: no test specified\" && exit 1"}}"#)
+    check(!ops.hasRealTestScript(proj), "npm placeholder test script → not real")
+
+    try write("package.json", #"{"name":"x","version":"1.0.0"}"#)
+    check(!ops.hasRealTestScript(proj), "no test script → not real")
+} catch {
+    check(false, "publish-ops test setup threw: \(error)")
+}
+
+print("CLI L10n: publish strings present in every language")
+for lang in Language.allCases {
+    let t = L10n(lang)
+    let ok = !t.publishInstalling().isEmpty
+        && !t.publishTesting().isEmpty
+        && t.publishConfirm("pkg", "1.2.3").contains("1.2.3")
+        && t.publishSuccess("pkg", "1.2.3").contains("pkg")
+        && t.publishBumpedTo("1.2.3").contains("1.2.3")
+        && !t.publishDryRunDone().isEmpty
+        && t.help().contains("clioil publish")
+    check(ok, "\(lang.rawValue): publish strings present")
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)

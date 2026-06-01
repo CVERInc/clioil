@@ -59,6 +59,7 @@ public struct L10n: Sendable {
         \(usageHeader)
           clioil list              \(cmdListDesc)
           clioil status [project]  \(cmdStatusDesc)
+          clioil publish [project] \(cmdPublishDesc)
           clioil help              \(cmdHelpDesc)
 
         \(languageHeader)
@@ -100,6 +101,18 @@ public struct L10n: Sendable {
         case .ko:     return "배포 가능한 프로젝트를 검색해 나열"
         case .fr:     return "Analyser et lister les projets publiables"
         case .de:     return "Veröffentlichbare Projekte suchen und auflisten"
+        }
+    }
+
+    private var cmdPublishDesc: String {
+        switch language {
+        case .en:   return "Publish to npm (guided: install → test → preview → publish)"
+        case .es:   return "Publicar en npm (guiado: instalar → probar → vista previa → publicar)"
+        case .ja:   return "npm に公開（ガイド付き：インストール→テスト→プレビュー→公開）"
+        case .zhTW: return "發布到 npm（引導式：安裝→測試→預覽→發布）"
+        case .ko:   return "npm에 배포 (안내: 설치 → 테스트 → 미리보기 → 배포)"
+        case .fr:   return "Publier sur npm (guidé : installer → tester → aperçu → publier)"
+        case .de:   return "Auf npm veröffentlichen (geführt: Installieren → Testen → Vorschau → Veröffentlichen)"
         }
     }
 

@@ -59,6 +59,26 @@ public enum Shell {
             stderr: collector.errString
         )
     }
+
+    /// Run a command with the terminal's stdio inherited (no capture), so the
+    /// user sees live output and can interact — e.g. `npm publish`'s browser
+    /// passkey prompt. Returns only the exit status.
+    @discardableResult
+    public static func runInteractive(_ args: [String], cwd: URL? = nil) -> Int32 {
+        guard !args.isEmpty else { return -1 }
+        // Flush our own buffered output first so our lines stay ordered ahead of
+        // the child's live output (matters when stdout is piped, not a TTY).
+        fflush(stdout)
+        fflush(stderr)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = args
+        if let cwd { process.currentDirectoryURL = cwd }
+        // No pipes set → child inherits this process's stdin/stdout/stderr.
+        do { try process.run() } catch { return -1 }
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
 }
 
 /// Thread-safe holder for the two pipe reads.
