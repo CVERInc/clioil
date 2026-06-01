@@ -49,10 +49,9 @@ final class PublishModel: ObservableObject {
                 log.append(t.publishTestPassed())
             } else {
                 log.append(t.publishTestFailed())
-                let tail = (r.stdout + "\n" + r.stderr)
-                    .split(whereSeparator: \.isNewline)
-                    .suffix(8)
-                for line in tail { log.append("  \(line)") }
+                for line in cleanedLines(r.stdout + "\n" + r.stderr).suffix(8) {
+                    log.append("  \(line)")
+                }
                 return finish(false)
             }
         }
@@ -72,13 +71,20 @@ final class PublishModel: ObservableObject {
             finish(true)
         } else {
             // Surface npm's actual error so it's visible (and copyable), not hidden.
-            let tail = (result.stdout + "\n" + result.stderr)
-                .split(whereSeparator: \.isNewline)
-                .suffix(12)
-            for line in tail { log.append("  \(line)") }
+            for line in cleanedLines(result.stdout + "\n" + result.stderr).suffix(12) {
+                log.append("  \(line)")
+            }
             advice = ErrorAdvisor(t).advise(stdout: result.stdout, stderr: result.stderr)
             finish(false)
         }
+    }
+
+    /// Split output into clean lines: strip CRs/control chars (from the PTY) and blanks.
+    private func cleanedLines(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isNewline)
+            .map { String(String.UnicodeScalarView($0.unicodeScalars.filter { $0 == "\t" || $0.value >= 32 })) }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     private func finish(_ ok: Bool) {

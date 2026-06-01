@@ -84,9 +84,13 @@ public struct PublishOps: Sendable {
         Shell.run(["npm", "test"], cwd: project.path)
     }
 
-    /// Real publish, output captured. npm still opens the browser for passkey
-    /// auth itself, so web-auth works even though we don't inherit the TTY.
+    /// Real publish for the GUI, output captured. Wrapped in `script` so npm
+    /// runs under a pseudo-TTY — otherwise its `--auth-type=web` flow can't open
+    /// the browser / poll and fails with `EOTP` in a piped context. `script`
+    /// forwards the child's exit code, so `.ok` still reflects npm's result.
     public func publishCaptured(_ project: Project) -> Shell.Result {
-        Shell.run(["npm", "publish", "--auth-type=web", "--access", "public"], cwd: project.path)
+        Shell.run(["script", "-q", "/dev/null",
+                   "npm", "publish", "--auth-type=web", "--access", "public"],
+                  cwd: project.path)
     }
 }
