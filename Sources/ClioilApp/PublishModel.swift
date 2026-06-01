@@ -49,6 +49,10 @@ final class PublishModel: ObservableObject {
                 log.append(t.publishTestPassed())
             } else {
                 log.append(t.publishTestFailed())
+                let tail = (r.stdout + "\n" + r.stderr)
+                    .split(whereSeparator: \.isNewline)
+                    .suffix(8)
+                for line in tail { log.append("  \(line)") }
                 return finish(false)
             }
         }

@@ -3,6 +3,47 @@ import Foundation
 /// Minimal process runner. Resolves tools via `/usr/bin/env` so it honours the
 /// user's PATH (node, npm, git, …).
 public enum Shell {
+    /// The user's *real* PATH, resolved once via their login+interactive shell.
+    ///
+    /// A GUI app launched from Finder inherits only launchd's minimal PATH
+    /// (`/usr/bin:/bin:…`), so Homebrew / nvm / fnm / volta node installs are
+    /// invisible and `npm` "isn't found". Asking the login shell reproduces the
+    /// environment a Terminal would have.
+    nonisolated(unsafe) private static var cachedPath: String?
+
+    private static func resolvedPath() -> String {
+        if let cachedPath { return cachedPath }
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let probe = Process()
+        probe.executableURL = URL(fileURLWithPath: shell)
+        probe.arguments = ["-ilc", "printf %s \"$PATH\""]
+        let out = Pipe()
+        probe.standardOutput = out
+        probe.standardError = Pipe()
+        var result = ""
+        if (try? probe.run()) != nil {
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            probe.waitUntilExit()
+            result = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if result.isEmpty {
+            // Fallback: common node locations + whatever we already had.
+            let extras = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+                          "/usr/sbin", "/sbin", NSHomeDirectory() + "/.volta/bin"]
+            let existing = ProcessInfo.processInfo.environment["PATH"] ?? ""
+            result = (extras + [existing]).joined(separator: ":")
+        }
+        cachedPath = result
+        return result
+    }
+
+    /// Child environment with PATH widened to the user's real shell PATH.
+    private static func childEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = resolvedPath()
+        return env
+    }
+
     public struct Result: Sendable {
         public let status: Int32
         public let stdout: String
@@ -24,6 +65,7 @@ public enum Shell {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = args
+        process.environment = childEnvironment()
         if let cwd { process.currentDirectoryURL = cwd }
 
         let outPipe = Pipe()
@@ -73,6 +115,7 @@ public enum Shell {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = args
+        process.environment = childEnvironment()
         if let cwd { process.currentDirectoryURL = cwd }
         // No pipes set → child inherits this process's stdin/stdout/stderr.
         do { try process.run() } catch { return -1 }
