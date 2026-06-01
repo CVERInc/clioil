@@ -52,9 +52,9 @@ let sample = Project(path: home.appendingPathComponent("dev/thing"), name: "x", 
 check(sample.displayPath == "~/dev/thing", "collapses home to ~")
 
 print("Language.parse")
-check(Language.parse("zh-Hant-TW") == .zhHant, "zh-Hant-TW → zhHant")
-check(Language.parse("zh_TW.UTF-8") == .zhHant, "zh_TW.UTF-8 → zhHant")
-check(Language.parse("zh_CN") == .zhHant, "any Chinese → zhHant (no simplified, by design)")
+check(Language.parse("zh-Hant-TW") == .zhTW, "zh-Hant-TW → zhTW")
+check(Language.parse("zh_TW.UTF-8") == .zhTW, "zh_TW.UTF-8 → zhTW")
+check(Language.parse("zh_CN") == .zhTW, "any Chinese → zhTW (no simplified, by design)")
 check(Language.parse("es_ES") == .es, "es_ES → es")
 check(Language.parse("ja") == .ja, "ja → ja")
 check(Language.parse("ko_KR") == .ko, "ko_KR → ko")
@@ -62,6 +62,15 @@ check(Language.parse("fr-FR") == .fr, "fr-FR → fr")
 check(Language.parse("de") == .de, "de → de")
 check(Language.parse("en_US.UTF-8") == .en, "en_US.UTF-8 → en")
 check(Language.parse("xx") == nil, "unknown → nil")
+// Full BCP-47 tags parse too
+check(Language.parse("en-US") == .en, "en-US → en")
+check(Language.parse("ja-JP") == .ja, "ja-JP → ja")
+check(Language.parse("zh-TW") == .zhTW, "zh-TW → zhTW")
+
+print("Language canonical tags (full BCP-47, aligned across OSS)")
+let tags = Language.allCases.map(\.rawValue).sorted()
+check(tags == ["de-DE", "en-US", "es-ES", "fr-FR", "ja-JP", "ko-KR", "zh-TW"],
+      "rawValues are the agreed full tags: \(tags.joined(separator: ", "))")
 
 print("Language.detect")
 check(Language.detect(override: "ja", environment: ["LANG": "en_US"]) == .ja, "override beats env")

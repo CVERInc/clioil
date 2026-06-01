@@ -70,19 +70,23 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 
 ## Languages
 
-The UI is localized into **English, Español, 日本語, 繁體中文 (台灣華語), 한국어,
-Français, Deutsch**. It auto-detects from your locale; override per-run with
-`--lang=<code>` or the `CLIOIL_LANG` environment variable:
+The UI is localized into 7 languages, tagged with full BCP-47 codes (the shared
+convention across our OSS projects):
+
+`en-US` · `es-ES` · `ja-JP` · `zh-TW` · `ko-KR` · `fr-FR` · `de-DE`
+
+It auto-detects from your locale; override per-run with `--lang=<code>` or the
+`CLIOIL_LANG` environment variable (both full and short forms are accepted):
 
 ```bash
-clioil --lang=ja list
-CLIOIL_LANG=zh-Hant clioil help
+clioil --lang=ja-JP list
+CLIOIL_LANG=zh-TW clioil help
 ```
 
 Translations live in `ClioilCore/L10n.swift` as exhaustive `switch`es, so adding
 a language is a compile error until every string is translated — the UI can't
 ship half-localized. (Simplified Chinese is intentionally omitted; any `zh-*`
-locale maps to Traditional.)
+locale maps to `zh-TW`.)
 
 ## Requirements
 

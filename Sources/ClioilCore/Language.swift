@@ -4,24 +4,24 @@ import Foundation
 /// be translated (the switches there are exhaustive) — so the UI can never ship
 /// half-localized.
 public enum Language: String, CaseIterable, Sendable {
-    case en
-    case es
-    case ja
-    case zhHant = "zh-Hant"   // 台灣華語 / Traditional Chinese
-    case ko
-    case fr
-    case de
+    case en = "en-US"
+    case es = "es-ES"
+    case ja = "ja-JP"
+    case zhTW = "zh-TW"   // 台灣華語 / Taiwan Mandarin
+    case ko = "ko-KR"
+    case fr = "fr-FR"
+    case de = "de-DE"
 
     /// The language's own name, for menus and `--help`.
     public var endonym: String {
         switch self {
-        case .en:     return "English"
-        case .es:     return "Español"
-        case .ja:     return "日本語"
-        case .zhHant: return "繁體中文"
-        case .ko:     return "한국어"
-        case .fr:     return "Français"
-        case .de:     return "Deutsch"
+        case .en:   return "English"
+        case .es:   return "Español"
+        case .ja:   return "日本語"
+        case .zhTW: return "繁體中文"
+        case .ko:   return "한국어"
+        case .fr:   return "Français"
+        case .de:   return "Deutsch"
         }
     }
 
@@ -32,7 +32,7 @@ public enum Language: String, CaseIterable, Sendable {
     /// ships, by design.
     public static func parse(_ raw: String) -> Language? {
         let s = raw.replacingOccurrences(of: "_", with: "-").lowercased()
-        if s.hasPrefix("zh") { return .zhHant }
+        if s.hasPrefix("zh") { return .zhTW }
         if s.hasPrefix("es") { return .es }
         if s.hasPrefix("ja") { return .ja }
         if s.hasPrefix("ko") { return .ko }
