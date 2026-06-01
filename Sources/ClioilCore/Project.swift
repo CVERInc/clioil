@@ -5,7 +5,7 @@ import Foundation
 /// Ecosystem-agnostic on purpose: a project knows *where* it is, *what* it's
 /// called and *which* version it sits at. The rules for "is this publishable"
 /// and "where does it publish to" live in a ``Publisher``, not here.
-public struct Project: Sendable, Identifiable, Hashable {
+public struct Project: Sendable, Identifiable, Hashable, Codable {
     /// Stable identity = absolute directory path.
     public var id: String { path.path }
 

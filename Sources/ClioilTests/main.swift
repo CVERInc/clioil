@@ -92,5 +92,67 @@ for lang in Language.allCases {
 }
 check(headers.count == Language.allCases.count, "every language has a distinct header (\(headers.count)/\(Language.allCases.count))")
 
+print("Git (against a real temp repo)")
+do {
+    let fm = FileManager.default
+    let repo = fm.temporaryDirectory.appendingPathComponent("clioil-git-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: repo) }
+    try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+
+    func git(_ args: [String]) { _ = Shell.run(["git"] + args, cwd: repo) }
+    git(["init", "-q"])
+    git(["config", "user.email", "t@t.test"])
+    git(["config", "user.name", "t"])
+    git(["commit", "--allow-empty", "-q", "-m", "first"])
+    git(["tag", "v0.1.0"])
+
+    check(Git.isRepo(repo), "isRepo true for a git dir")
+    check(!Git.isRepo(fm.temporaryDirectory.appendingPathComponent("nope-\(UUID().uuidString)")),
+          "isRepo false for a non-repo")
+    check(Git.lastTag(repo) == "v0.1.0", "lastTag reads v0.1.0")
+    check(Git.commitsSince("v0.1.0", dir: repo).isEmpty, "no commits since the tag yet")
+
+    git(["commit", "--allow-empty", "-q", "-m", "second after tag"])
+    check(Git.commitsSince("v0.1.0", dir: repo).count == 1, "one commit since the tag")
+
+    check(!Git.isDirty(repo), "clean tree not dirty")
+    try "x".write(to: repo.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
+    check(Git.isDirty(repo), "untracked file makes it dirty")
+} catch {
+    check(false, "git test setup threw: \(error)")
+}
+
+print("StatusService (stubbed registry — no network)")
+struct StubPublisher: Publisher {
+    let id = "stub"
+    let latest: String?
+    let existing: Set<String>
+    func latestPublishedVersion(of project: Project) -> String? { latest }
+    func versionExists(_ version: String, of project: Project) -> Bool { existing.contains(version) }
+}
+do {
+    let proj = Project(path: FileManager.default.temporaryDirectory, name: "demo", version: "1.2.0", ecosystem: "npm")
+    let pub = StubPublisher(latest: "1.1.0", existing: ["1.0.0", "1.1.0"])
+    let s = StatusService(publisher: pub).status(of: proj)
+    check(s.registryLatest == "1.1.0", "status carries registry latest")
+    check(s.currentIsPublished == false, "1.2.0 not yet published")
+
+    let pub2 = StubPublisher(latest: "1.2.0", existing: ["1.2.0"])
+    let s2 = StatusService(publisher: pub2).status(of: proj)
+    check(s2.currentIsPublished, "1.2.0 detected as already published")
+}
+
+print("CLI L10n: status strings present in every language")
+for lang in Language.allCases {
+    let t = L10n(lang)
+    let ok = !t.statusOnNpm().isEmpty
+        && t.statusReadyToPublish("1.0.0").contains("1.0.0")
+        && t.statusAlreadyPublished("1.0.0").contains("1.0.0")
+        && !t.statusGitDirty().isEmpty
+        && t.statusChangesSince("v1", 2).contains("v1")
+        && t.help().contains("clioil status")
+    check(ok, "\(lang.rawValue): status strings present")
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)

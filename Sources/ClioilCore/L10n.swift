@@ -57,8 +57,9 @@ public struct L10n: Sendable {
         \(helpTagline)
 
         \(usageHeader)
-          clioil list     \(cmdListDesc)
-          clioil help     \(cmdHelpDesc)
+          clioil list              \(cmdListDesc)
+          clioil status [project]  \(cmdStatusDesc)
+          clioil help              \(cmdHelpDesc)
 
         \(languageHeader)
           \(languageNote)
@@ -99,6 +100,18 @@ public struct L10n: Sendable {
         case .ko:     return "배포 가능한 프로젝트를 검색해 나열"
         case .fr:     return "Analyser et lister les projets publiables"
         case .de:     return "Veröffentlichbare Projekte suchen und auflisten"
+        }
+    }
+
+    private var cmdStatusDesc: String {
+        switch language {
+        case .en:   return "Show a project's release readiness (read-only)"
+        case .es:   return "Mostrar si un proyecto está listo para publicar (solo lectura)"
+        case .ja:   return "プロジェクトの公開準備状況を表示（読み取り専用）"
+        case .zhTW: return "顯示專案的發布就緒狀態（唯讀）"
+        case .ko:   return "프로젝트의 배포 준비 상태 표시 (읽기 전용)"
+        case .fr:   return "Afficher l'état de préparation d'un projet (lecture seule)"
+        case .de:   return "Veröffentlichungsbereitschaft eines Projekts anzeigen (schreibgeschützt)"
         }
     }
 

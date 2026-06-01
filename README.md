@@ -1,5 +1,7 @@
 # clioil
 
+[![CI](https://github.com/CVERInc/clioil/actions/workflows/ci.yml/badge.svg)](https://github.com/CVERInc/clioil/actions/workflows/ci.yml)
+
 > Make shipping your code to *any* registry a one-click, friendly thing — on a native Mac.
 
 `clioil` turns "publish this package" from a pile of ecosystem-specific incantations
@@ -17,9 +19,17 @@ This is the engine's first vertical slice. Working today:
 
 ```bash
 swift build
-swift run clioil list      # scan & list publishable projects (pure Swift, no node needed)
-swift run ClioilTests      # framework-free test runner (no Xcode required)
+swift run clioil list                  # scan & list publishable projects (pure Swift, no node needed)
+swift run clioil status <project>      # read-only release-readiness report
+swift run clioil --version
+swift run ClioilTests                  # framework-free test runner (no Xcode required)
 ```
+
+`status` shows, for a project: its npm latest, whether the local version is
+already published (so you know a publish would fail), whether the git tree is
+dirty, and the commits since the last version tag — everything you'd want to
+eyeball before shipping. Add `--json` for scripting, `--lang=<code>` to force a
+language.
 
 The actual **publish** flow currently still lives in the audited shell prototype
 (`發布 npm 專案.command`) until the engine grows a confirmation/auth layer — see the
@@ -58,6 +68,8 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] `Publisher` plugin seam + npm read-only queries
 - [x] CLI `list`
 - [x] Localized UI — 7 languages, auto-detected, compiler-enforced completeness
+- [x] CLI `status` — read-only release-readiness report (+ `--json`, `--version`)
+- [x] CI — `swift build` + tests on every push/PR
 - [ ] Engine: publish plan (bump → test → pack preview → publish → tag) ported from the prototype
 - [ ] **MenuBarExtra app** — the native "pick a project, ship it" surface
 - [ ] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
