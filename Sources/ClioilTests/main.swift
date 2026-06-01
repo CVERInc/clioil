@@ -154,5 +154,28 @@ for lang in Language.allCases {
     check(ok, "\(lang.rawValue): status strings present")
 }
 
+print("ErrorAdvisor.classify (real npm error snippets)")
+check(ErrorAdvisor.classify(stdout: "", stderr: "npm error code E403\nnpm error 403 Forbidden - PUT https://registry.npmjs.org/foo - You cannot publish over the previously published versions: 1.0.0.") == .versionExists,
+      "403 'publish over previously published' → versionExists (not forbidden)")
+check(ErrorAdvisor.classify(stdout: "", stderr: "npm error code ENEEDAUTH\nnpm error need auth This command requires you to be logged in.") == .notLoggedIn,
+      "ENEEDAUTH → notLoggedIn")
+check(ErrorAdvisor.classify(stdout: "", stderr: "npm error code E403\nnpm error 403 Forbidden - you do not have permission to publish 'foo'.") == .forbidden,
+      "plain 403 permission → forbidden")
+check(ErrorAdvisor.classify(stdout: "", stderr: "npm error code ENOTFOUND\nnpm error network request to https://registry.npmjs.org failed") == .network,
+      "ENOTFOUND/network → network")
+check(ErrorAdvisor.classify(stdout: "", stderr: "npm error something nobody has ever seen") == .unknown,
+      "novel error → unknown")
+
+print("ErrorAdvisor.advise coverage (every kind, every language)")
+for lang in Language.allCases {
+    let advisor = ErrorAdvisor(L10n(lang))
+    for kind in PublishErrorKind.allCases {
+        let a = advisor.advise(kind)
+        let ok = a.kind == kind && !a.title.isEmpty && !a.steps.isEmpty
+            && a.steps.allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        check(ok, "\(lang.rawValue)/\(kind.rawValue): title + \(a.steps.count) step(s)")
+    }
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)
