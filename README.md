@@ -57,6 +57,7 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] Engine: scan + parse manifests in pure Swift
 - [x] `Publisher` plugin seam + npm read-only queries
 - [x] CLI `list`
+- [x] Localized UI — 7 languages, auto-detected, compiler-enforced completeness
 - [ ] Engine: publish plan (bump → test → pack preview → publish → tag) ported from the prototype
 - [ ] **MenuBarExtra app** — the native "pick a project, ship it" surface
 - [ ] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
@@ -66,6 +67,22 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
       not heavy stack-trace reasoning — for genuine debugging the app optionally escalates
       to a larger model (Claude API). On-device first, cloud only when stuck.
 - [ ] More ecosystems: PyPI, crates, GitHub Releases, Homebrew
+
+## Languages
+
+The UI is localized into **English, Español, 日本語, 繁體中文 (台灣華語), 한국어,
+Français, Deutsch**. It auto-detects from your locale; override per-run with
+`--lang=<code>` or the `CLIOIL_LANG` environment variable:
+
+```bash
+clioil --lang=ja list
+CLIOIL_LANG=zh-Hant clioil help
+```
+
+Translations live in `ClioilCore/L10n.swift` as exhaustive `switch`es, so adding
+a language is a compile error until every string is translated — the UI can't
+ship half-localized. (Simplified Chinese is intentionally omitted; any `zh-*`
+locale maps to Traditional.)
 
 ## Requirements
 

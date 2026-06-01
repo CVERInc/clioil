@@ -14,17 +14,38 @@ func pad(_ s: String, _ width: Int) -> String {
     s.count >= width ? s : s + String(repeating: " ", count: width - s.count)
 }
 
-func cmdList() {
-    let scanner = ProjectScanner(roots: defaultRoots, maxDepth: 1)
-    let projects = scanner.scan().sorted { $0.name.lowercased() < $1.name.lowercased() }
+/// Pull `--lang=xx` / `--lang xx` / `-l xx` out of the args, return the rest.
+func parseArgs(_ argv: [String]) -> (override: String?, positional: [String]) {
+    var override: String?
+    var positional: [String] = []
+    var i = 1
+    while i < argv.count {
+        let a = argv[i]
+        if a == "--lang" || a == "-l" {
+            i += 1
+            if i < argv.count { override = argv[i] }
+        } else if a.hasPrefix("--lang=") {
+            override = String(a.dropFirst("--lang=".count))
+        } else {
+            positional.append(a)
+        }
+        i += 1
+    }
+    return (override, positional)
+}
+
+func cmdList(_ t: L10n) {
+    let projects = ProjectScanner(roots: defaultRoots, maxDepth: 1)
+        .scan()
+        .sorted { $0.name.lowercased() < $1.name.lowercased() }
 
     guard !projects.isEmpty else {
-        print("找不到可發布的專案。掃描位置：")
+        print(t.noProjectsFound())
         for r in defaultRoots { print("  • \(r.path)") }
         exit(1)
     }
 
-    print("可發布的專案（\(projects.count)）：")
+    print(t.projectsHeader(projects.count))
     print(String(repeating: "─", count: 48))
     for (i, p) in projects.enumerated() {
         let n = pad("\(i + 1))", 4)
@@ -32,26 +53,17 @@ func cmdList() {
     }
 }
 
-func cmdHelp() {
-    print("""
-    clioil — 讓「把程式碼推到各平台」變成一件簡單的事（早期骨架）
+let (override, positional) = parseArgs(CommandLine.arguments)
+let t = L10n(Language.detect(override: override))
 
-    用法：
-      clioil list     掃描並列出可發布的專案
-      clioil help     顯示這個說明
-
-    現況：list 已可用（純 Swift 掃描，不需要 node）。
-    發布流程目前仍由桌面的「發布 npm 專案.command」負責，
-    待引擎補上確認/驗證層後再內建。詳見 README 的 Roadmap。
-    """)
-}
-
-let args = CommandLine.arguments
-switch args.count > 1 ? args[1] : "list" {
-case "list":          cmdList()
-case "help", "-h", "--help": cmdHelp()
+switch positional.first ?? "list" {
+case "list":
+    cmdList(t)
+case "help", "-h", "--help":
+    print(t.help())
 case let other:
-    print("未知指令：\(other)\n")
-    cmdHelp()
+    print(t.unknownCommand(other))
+    print("")
+    print(t.help())
     exit(1)
 }
