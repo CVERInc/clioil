@@ -31,11 +31,10 @@ final class PublishModel: ObservableObject {
             openedAuthURL = true
             NSWorkspace.shared.open(url)
         }
-        if transient {
-            statusText = text
-        } else {
-            log.append(text)
-        }
+        // The top status row always reflects the *latest* activity (live), whether
+        // it's an in-place update or a committed line.
+        statusText = text
+        if !transient { log.append(text) }
     }
 
     private static let spinnerScalars = Set("\\|/-".unicodeScalars)
@@ -56,7 +55,7 @@ final class PublishModel: ObservableObject {
         if bump != .none {
             if let v = await detached({ ops.bump(project, bump) }) {
                 bumped = v
-                log.append(t.publishBumpedTo(v))
+                note(t.publishBumpedTo(v))
             } else {
                 log.append("✗ npm version \(bump.rawValue)")
                 return finish(false)
@@ -70,17 +69,17 @@ final class PublishModel: ObservableObject {
         }
 
         if await detached({ ops.needsInstall(project) }) {
-            log.append(t.publishInstalling())
+            note(t.publishInstalling())
             _ = await detached { ops.runInstallCaptured(project) }
         }
 
         if await detached({ ops.hasRealTestScript(project) }) {
-            log.append(t.publishTesting())
+            note(t.publishTesting())
             let r = await detached { ops.runTestCaptured(project) }
             if r.ok {
-                log.append(t.publishTestPassed())
+                note(t.publishTestPassed())
             } else {
-                log.append(t.publishTestFailed())
+                note(t.publishTestFailed())
                 for line in cleanedLines(r.stdout + "\n" + r.stderr).suffix(8) {
                     log.append("  \(line)")
                 }
@@ -88,7 +87,7 @@ final class PublishModel: ObservableObject {
             }
         }
 
-        log.append(t.publishAuthInBrowser())
+        note(t.publishAuthInBrowser())
         let result = await detached {
             ops.publishStreaming(project) { text, transient in
                 Task { @MainActor in self.handleStream(text, transient: transient) }
@@ -96,7 +95,7 @@ final class PublishModel: ObservableObject {
         }
         let combined = result.stdout + "\n" + result.stderr
         if result.ok && !combined.contains("npm error") {
-            log.append(t.publishSuccess(project.name, ver))
+            note(t.publishSuccess(project.name, ver))
             if bump != .none, Git.isRepo(project.path) {
                 _ = await detached {
                     Git.commit(project.path, message: "release v\(ver)",
@@ -119,6 +118,12 @@ final class PublishModel: ObservableObject {
             .map { String(String.UnicodeScalarView($0.unicodeScalars.filter { $0 == "\t" || $0.value >= 32 })) }
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Record a stage marker: into the log *and* the live top status row.
+    private func note(_ s: String) {
+        log.append(s)
+        statusText = s
     }
 
     private func finish(_ ok: Bool) {
