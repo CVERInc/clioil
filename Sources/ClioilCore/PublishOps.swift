@@ -99,7 +99,7 @@ public struct PublishOps: Sendable {
     /// log). Wrapped in `script` for a PTY; "\n" answers npm's ENTER prompt.
     public func publishStreaming(
         _ project: Project,
-        onLine: @escaping @Sendable (String) -> Void
+        onLine: @escaping @Sendable (_ text: String, _ transient: Bool) -> Void
     ) -> Shell.Result {
         Shell.runStreaming(
             ["script", "-q", "/dev/null",

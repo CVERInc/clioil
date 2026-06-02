@@ -128,10 +128,13 @@ public enum Shell {
     /// Like `run`, but invokes `onLine` for each cleaned output line as it
     /// arrives — so a caller can react mid-flight (e.g. open npm's web-auth URL
     /// the moment it's printed, while npm keeps polling).
+    /// Stream output as a tiny terminal would: `\n` commits a line, `\r` is an
+    /// in-place redraw (npm's spinner / progress). `onLine(text, transient)` —
+    /// `transient == true` means "this overwrites the current status line".
     @discardableResult
     public static func runStreaming(
         _ args: [String], cwd: URL? = nil, stdin: String? = nil,
-        onLine: @escaping @Sendable (String) -> Void
+        onLine: @escaping @Sendable (_ text: String, _ transient: Bool) -> Void
     ) -> Result {
         guard let first = args.first else {
             return Result(status: -1, stdout: "", stderr: "empty command")
@@ -156,19 +159,23 @@ public enum Shell {
         func pump(_ handle: FileHandle, isErr: Bool) {
             group.enter()
             queue.async {
-                var buffer = Data()
+                var lineBuf = Data()
+                func flush(transient: Bool) {
+                    let text = cleanLine(String(decoding: lineBuf, as: UTF8.self))
+                    lineBuf.removeAll(keepingCapacity: true)
+                    if !text.isEmpty { onLine(text, transient) }
+                }
                 while case let chunk = handle.availableData, !chunk.isEmpty {
                     if isErr { acc.appendErr(chunk) } else { acc.appendOut(chunk) }
-                    buffer.append(chunk)
-                    while let nl = buffer.firstIndex(of: 0x0A) {
-                        let lineData = Data(buffer[buffer.startIndex..<nl])
-                        buffer.removeSubrange(buffer.startIndex...nl)
-                        let line = cleanLine(String(decoding: lineData, as: UTF8.self))
-                        if !line.isEmpty { onLine(line) }
+                    for byte in chunk {
+                        switch byte {
+                        case 0x0A: flush(transient: false)  // newline → commit the line
+                        case 0x0D: flush(transient: true)   // carriage return → in-place redraw
+                        default: lineBuf.append(byte)
+                        }
                     }
                 }
-                let last = cleanLine(String(decoding: buffer, as: UTF8.self))
-                if !last.isEmpty { onLine(last) }
+                flush(transient: false)
                 group.leave()
             }
         }

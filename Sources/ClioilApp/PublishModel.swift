@@ -8,6 +8,7 @@ import ClioilCore
 final class PublishModel: ObservableObject {
     @Published var running = false
     @Published var log: [String] = []
+    @Published var statusText = ""        // the live, in-place status line (npm's progress)
     @Published var advice: Advice?
     @Published var finished = false
     @Published var succeeded = false
@@ -16,18 +17,30 @@ final class PublishModel: ObservableObject {
 
     func run(project: Project, bump: Bump, t: L10n) {
         guard !running else { return }
-        running = true; log = []; advice = nil; finished = false; succeeded = false
+        running = true; log = []; statusText = ""; advice = nil; finished = false; succeeded = false
         openedAuthURL = false
         Task { await perform(project: project, bump: bump, t: t) }
     }
 
-    /// Live publish output → log; opens npm's web-auth URL the moment it appears.
-    private func handleStreamLine(_ line: String) {
-        log.append(line)
-        if !openedAuthURL, let url = Self.authURL(in: line) {
+    /// Handle one streamed line. Committed lines join the log; in-place (transient)
+    /// updates drive the live status row; bare spinner frames are absorbed by the
+    /// native ProgressView. npm's web-auth URL is opened the moment it appears.
+    private func handleStream(_ text: String, transient: Bool) {
+        if Self.isSpinnerFrame(text) { return }   // the native spinner is the animation
+        if !openedAuthURL, let url = Self.authURL(in: text) {
             openedAuthURL = true
             NSWorkspace.shared.open(url)
         }
+        if transient {
+            statusText = text
+        } else {
+            log.append(text)
+        }
+    }
+
+    private static let spinnerScalars = Set("\\|/-".unicodeScalars)
+    private static func isSpinnerFrame(_ text: String) -> Bool {
+        !text.isEmpty && text.count <= 2 && text.unicodeScalars.allSatisfy { spinnerScalars.contains($0) }
     }
 
     private static func authURL(in line: String) -> URL? {
@@ -77,8 +90,8 @@ final class PublishModel: ObservableObject {
 
         log.append(t.publishAuthInBrowser())
         let result = await detached {
-            ops.publishStreaming(project) { line in
-                Task { @MainActor in self.handleStreamLine(line) }
+            ops.publishStreaming(project) { text, transient in
+                Task { @MainActor in self.handleStream(text, transient: transient) }
             }
         }
         let combined = result.stdout + "\n" + result.stderr
