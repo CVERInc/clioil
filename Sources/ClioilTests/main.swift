@@ -219,5 +219,23 @@ for lang in Language.allCases {
     check(ok, "\(lang.rawValue): publish strings present")
 }
 
+print("Shell.runStreaming (live lines + ANSI/spinner cleaning)")
+final class Sink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ s: String) { lock.lock(); items.append(s); lock.unlock() }
+    var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
+}
+do {
+    let sink = Sink()
+    // a coloured line, a braille spinner frame, then npm's auth URL
+    let payload = "a\u{1B}[32mb\u{1B}[0m\n\u{2819}\nhttps://www.npmjs.com/auth/cli/xyz\n"
+    let r = Shell.runStreaming(["printf", "%s", payload]) { sink.add($0) }
+    check(r.ok, "streaming command ran")
+    check(sink.all.contains("ab"), "ANSI codes stripped → 'ab' (got \(sink.all))")
+    check(!sink.all.contains { $0.contains("\u{2819}") }, "spinner frame dropped")
+    check(sink.all.contains("https://www.npmjs.com/auth/cli/xyz"), "auth URL line preserved intact")
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)

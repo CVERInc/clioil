@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ClioilCore
 
 /// Drives a publish from the GUI: runs the blocking npm/git work off the main
@@ -11,10 +12,28 @@ final class PublishModel: ObservableObject {
     @Published var finished = false
     @Published var succeeded = false
 
+    private var openedAuthURL = false
+
     func run(project: Project, bump: Bump, t: L10n) {
         guard !running else { return }
         running = true; log = []; advice = nil; finished = false; succeeded = false
+        openedAuthURL = false
         Task { await perform(project: project, bump: bump, t: t) }
+    }
+
+    /// Live publish output → log; opens npm's web-auth URL the moment it appears.
+    private func handleStreamLine(_ line: String) {
+        log.append(line)
+        if !openedAuthURL, let url = Self.authURL(in: line) {
+            openedAuthURL = true
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private static func authURL(in line: String) -> URL? {
+        guard let r = line.range(of: "https://www.npmjs.com/auth/") else { return nil }
+        let s = String(line[r.lowerBound...]).trimmingCharacters(in: .whitespaces)
+        return URL(string: s)
     }
 
     private func perform(project: Project, bump: Bump, t: L10n) async {
@@ -57,8 +76,13 @@ final class PublishModel: ObservableObject {
         }
 
         log.append(t.publishAuthInBrowser())
-        let result = await detached { ops.publishCaptured(project) }
-        if result.ok {
+        let result = await detached {
+            ops.publishStreaming(project) { line in
+                Task { @MainActor in self.handleStreamLine(line) }
+            }
+        }
+        let combined = result.stdout + "\n" + result.stderr
+        if result.ok && !combined.contains("npm error") {
             log.append(t.publishSuccess(project.name, ver))
             if bump != .none, Git.isRepo(project.path) {
                 _ = await detached {
@@ -70,10 +94,7 @@ final class PublishModel: ObservableObject {
             }
             finish(true)
         } else {
-            // Surface npm's actual error so it's visible (and copyable), not hidden.
-            for line in cleanedLines(result.stdout + "\n" + result.stderr).suffix(12) {
-                log.append("  \(line)")
-            }
+            // Output already streamed into the log live; just add the guidance.
             advice = ErrorAdvisor(t).advise(stdout: result.stdout, stderr: result.stderr)
             finish(false)
         }

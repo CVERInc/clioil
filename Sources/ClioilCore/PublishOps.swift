@@ -89,10 +89,21 @@ public struct PublishOps: Sendable {
     /// the browser / poll and fails with `EOTP` in a piped context. `script`
     /// forwards the child's exit code, so `.ok` still reflects npm's result.
     public func publishCaptured(_ project: Project) -> Shell.Result {
-        // npm's web-auth prints "Press ENTER to open in the browser" and waits;
-        // with no TTY user, feed the newline so it opens the browser and polls.
         Shell.run(["script", "-q", "/dev/null",
                    "npm", "publish", "--auth-type=web", "--access", "public"],
                   cwd: project.path, stdin: "\n")
+    }
+
+    /// Streaming publish for the GUI. npm prints "Authenticate your account at:
+    /// <url>" then polls; `onLine` lets the caller open that URL (and show a live
+    /// log). Wrapped in `script` for a PTY; "\n" answers npm's ENTER prompt.
+    public func publishStreaming(
+        _ project: Project,
+        onLine: @escaping @Sendable (String) -> Void
+    ) -> Shell.Result {
+        Shell.runStreaming(
+            ["script", "-q", "/dev/null",
+             "npm", "publish", "--auth-type=web", "--access", "public"],
+            cwd: project.path, stdin: "\n", onLine: onLine)
     }
 }
