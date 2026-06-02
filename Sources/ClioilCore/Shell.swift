@@ -57,7 +57,7 @@ public enum Shell {
     /// so a command that floods stderr while we read stdout can't deadlock on a
     /// full pipe buffer.
     @discardableResult
-    public static func run(_ args: [String], cwd: URL? = nil) -> Result {
+    public static func run(_ args: [String], cwd: URL? = nil, stdin: String? = nil) -> Result {
         guard let first = args.first else {
             return Result(status: -1, stdout: "", stderr: "empty command")
         }
@@ -72,6 +72,8 @@ public enum Shell {
         let errPipe = Pipe()
         process.standardOutput = outPipe
         process.standardError = errPipe
+        let inPipe: Pipe? = stdin != nil ? Pipe() : nil
+        if let inPipe { process.standardInput = inPipe }
 
         let collector = OutputCollector()
         let group = DispatchGroup()
@@ -91,6 +93,11 @@ public enum Shell {
             try process.run()
         } catch {
             return Result(status: -1, stdout: "", stderr: "\(first): \(error.localizedDescription)")
+        }
+        // Feed stdin (e.g. the ENTER npm's web-auth waits for), then close it.
+        if let inPipe, let stdin {
+            inPipe.fileHandleForWriting.write(Data(stdin.utf8))
+            try? inPipe.fileHandleForWriting.close()
         }
         process.waitUntilExit()
         group.wait()
