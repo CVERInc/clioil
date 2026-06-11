@@ -41,10 +41,11 @@ dirty, and the commits since the last version tag — everything you'd want to
 eyeball before shipping. Add `--json` for scripting, `--lang=<code>` to force a
 language.
 
-The actual **publish** flow currently still lives in the audited shell prototype
-(`發布 npm 專案.command`) until the engine grows a confirmation/auth layer — see the
-Roadmap. Read-only npm queries (`latest`, `versionExists`) are already wired into
-`NpmPublisher`.
+The **publish** flow is implemented in Swift (`PublishOps.swift`): an interactive
+`npm publish --auth-type=web` (browser passkey) run under a pseudo-TTY, with
+`ErrorAdvisor` turning common failures into localized guidance. Read-only npm
+queries (`latest`, `versionExists`) are wired into `NpmPublisher`, and
+`scripts/build-app.sh` produces the double-clickable app.
 
 ## Why a separate project (and not part of clikae)
 
