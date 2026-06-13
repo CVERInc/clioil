@@ -1,14 +1,14 @@
 #!/bin/bash
 # Build a double-clickable clioil.app from the SwiftUI target — no Xcode needed.
 #
-#   ./scripts/build-app.sh                 # release build → ~/Desktop/clioil.app
+#   ./scripts/build-app.sh                 # release build → ~/Applications/clioil.app
 #   ./scripts/build-app.sh debug           # faster debug build
 #   ./scripts/build-app.sh release /tmp/clioil.app   # custom destination
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
-DEST="${2:-$HOME/Desktop/clioil.app}"
+DEST="${2:-$HOME/Applications/clioil.app}"
 
 echo "▸ swift build -c $CONFIG --product ClioilApp"
 swift build -c "$CONFIG" --product ClioilApp
