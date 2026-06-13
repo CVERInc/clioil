@@ -6,3 +6,6 @@ DerivedData/
 
 # Local-only history (the bash prototype clioil grew from) — never published.
 attic/
+
+# Internal session handoff doc — do not publish.
+HANDOFF.md
