@@ -67,8 +67,9 @@ ClioilCore  ── pure engine, no UI, no globals
   ├─ Project / Bump   ecosystem-agnostic models
   └─ Shell            safe process runner (deadlock-free pipe draining)
 
-clioil (CLI)   ── thin shell over the engine; `list` today
-ClioilApp      ── (planned) SwiftUI MenuBarExtra — the real "click to ship" surface
+clioil (CLI)   ── thin shell over the engine; `list` / `status` / `publish`
+ClioilApp      ── SwiftUI app — browse projects, see readiness, publish from the window
+                  (MenuBarExtra "click to ship" mode planned)
 ```
 
 Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
