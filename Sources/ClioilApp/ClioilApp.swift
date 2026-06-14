@@ -51,7 +51,9 @@ struct ContentView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .background(Color.reefDeep)
+            // Frosted teal sidebar via Signet's material treatment.
+            .background(Color.reefDeep.opacity(0.55))
+            .background(.ultraThinMaterial)
             .navigationTitle("clioil")
             .frame(minWidth: 240)
         } detail: {
