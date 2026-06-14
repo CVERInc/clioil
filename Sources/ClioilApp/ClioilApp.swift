@@ -1,8 +1,10 @@
 import SwiftUI
 import AppKit
 import ClioilCore
+import Signet
 
-// Native surface over ClioilCore — reepub-styled (deep teal, mint, teal accent).
+// Native surface over ClioilCore — reef-styled (deep teal, mint, teal accent).
+// Palette/tokens now come from Signet (the shared design system) via ReefTheme.
 // Browse projects, see readiness, and publish right from the window.
 
 @main
@@ -13,6 +15,7 @@ struct ClioilApp: App {
                 .frame(minWidth: 640, minHeight: 460)
                 .preferredColorScheme(.dark)
                 .tint(.reefTeal)
+                .cverTheme(ReefTheme())
         }
         .windowResizability(.contentSize)
     }
