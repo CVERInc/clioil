@@ -89,6 +89,7 @@ struct ProjectDetailView: View {
     @State private var loading = true
     @State private var bump: Bump = .none
     @StateObject private var publisher = PublishModel()
+    @StateObject private var releasePrep = ReleasePrepModel()
 
     var body: some View {
         ScrollView {
@@ -98,6 +99,8 @@ struct ProjectDetailView: View {
                 statusSection
                 divider
                 publishSection
+                divider
+                releaseSection
                 Spacer(minLength: 0)
             }
             .padding(24)
@@ -224,6 +227,87 @@ struct ProjectDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
+    }
+
+    /// PREPARE a GitHub Release + Homebrew formula. Mirrors `clioil release`:
+    /// it only previews the formula + the commands the human runs; it never
+    /// creates a tag/release or pushes.
+    private var releaseSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(t.releaseFormulaHeader()).font(.callout.bold()).foregroundStyle(Color.reefMint)
+
+            Button {
+                releasePrep.prepare(project: project)
+            } label: {
+                Label(t.cmdReleaseDesc(), systemImage: "shippingbox.and.arrow.backward.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(.reefTeal)
+            .disabled(releasePrep.preparing)
+
+            if releasePrep.preparing {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("…").font(.caption).foregroundStyle(Color.reefTextDim)
+                }
+            }
+
+            if releasePrep.error != nil {
+                Label(t.releaseNoSlug(), systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(Color.reefAmber)
+            }
+
+            if let plan = releasePrep.plan {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(t.releaseTarball()): \(plan.tarballURL)")
+                        .font(.caption).foregroundStyle(Color.reefTextDim).textSelection(.enabled)
+                    if let sha = plan.sha256 {
+                        Text("sha256: \(sha)")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(Color.reefTextDim).textSelection(.enabled)
+                        Text(t.releaseShaPreviewNote())
+                            .font(.caption2).foregroundStyle(Color.reefAmber)
+                    }
+
+                    HStack {
+                        Text(t.releaseFormulaHeader()).font(.caption.bold()).foregroundStyle(Color.reefMint)
+                        Spacer()
+                        Button { copyToPasteboard(plan.formula) } label: {
+                            Label(t.copyButton(), systemImage: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless).font(.caption).foregroundStyle(Color.reefMint)
+                    }
+                    Text(plan.formula)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Color.reefText).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color(hex: 0x031c1c))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Text(t.releaseCommandsHeader()).font(.caption.bold()).foregroundStyle(Color.reefAmber)
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(plan.commands, id: \.self) { c in
+                            Text("$ \(c)").font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(Color.reefText).textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.reefAmber.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Text(t.releasePrepareOnly()).font(.caption2).foregroundStyle(Color.reefTextDim)
+                }
+            }
+        }
+    }
+
+    private func copyToPasteboard(_ s: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
     }
 
     private func row(_ icon: String, _ text: String, _ color: Color) -> some View {

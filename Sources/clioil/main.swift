@@ -5,9 +5,12 @@ import ClioilCore
 //   clioil list                  list publishable projects
 //   clioil status  [project]     read-only release-readiness report
 //   clioil publish [project]     guided publish (install → test → preview → publish)
+//   clioil release [project]     PREPARE a GitHub Release + Homebrew formula
+//                                (prints artifacts/commands; never publishes)
 //   clioil help | --version
 // Global flags: --lang=<code>, --json
 // publish flags: --dry-run, --bump <patch|minor|major>, --no-test, --no-install, --yes
+// release flags: --slug <owner/repo> (override remote), --formula-out <path> (write formula)
 
 let home = FileManager.default.homeDirectoryForCurrentUser
 let defaultRoots = [home, home.appendingPathComponent("Desktop/GitHub")]
@@ -23,6 +26,8 @@ struct CLIOptions {
     var noInstall = false
     var yes = false
     var bump: Bump?
+    var slug: String?
+    var formulaOut: String?
     var positional: [String] = []
 }
 
@@ -40,6 +45,14 @@ func parse(_ argv: [String]) -> CLIOptions {
             i += 1; if i < argv.count { o.bump = Bump(rawValue: argv[i]) }
         case a.hasPrefix("--bump="):
             o.bump = Bump(rawValue: String(a.dropFirst("--bump=".count)))
+        case a == "--slug":
+            i += 1; if i < argv.count { o.slug = argv[i] }
+        case a.hasPrefix("--slug="):
+            o.slug = String(a.dropFirst("--slug=".count))
+        case a == "--formula-out":
+            i += 1; if i < argv.count { o.formulaOut = argv[i] }
+        case a.hasPrefix("--formula-out="):
+            o.formulaOut = String(a.dropFirst("--formula-out=".count))
         case a == "--json":      o.json = true
         case a == "--dry-run":   o.dryRun = true
         case a == "--no-test":   o.noTest = true
@@ -235,6 +248,55 @@ func cmdPublish(_ t: L10n, opts: CLIOptions, selector: String?) {
     }
 }
 
+/// PREPARE a GitHub Release + Homebrew formula. This command is deliberately
+/// non-mutating: it computes the tag, tarball URL, a local SHA-256 preview, the
+/// formula text and the exact publish commands — and prints them for the human
+/// to run. It NEVER creates a tag, a release, or pushes anything.
+func cmdRelease(_ t: L10n, opts: CLIOptions, selector: String?) {
+    let project = resolveProject(selector, t)
+    let sep = String(repeating: "─", count: 48)
+
+    // owner/repo: explicit --slug wins, else read origin (read-only).
+    guard let slug = opts.slug ?? ReleasePrep.repoSlug(of: project.path) else {
+        eprint(t.releaseNoSlug())
+        exit(1)
+    }
+
+    let repoName = slug.split(separator: "/").last.map(String.init) ?? project.name
+    let tag = "v\(project.version)"
+    // Local, read-only SHA-256 preview of the source archive (no network).
+    let sha = ReleasePrep.localArchiveSHA256(dir: project.path, tag: tag, prefix: "\(repoName)-\(project.version)")
+    let plan = ReleasePrep.makePlan(repoSlug: slug, version: project.version, sha256: sha)
+
+    if opts.json { printJSON(plan); return }
+
+    print("\(project.name)   \(plan.tag)   \(slug)")
+    print(sep)
+    print("  \(t.releaseTarball()): \(plan.tarballURL)")
+    print("  sha256: \(plan.sha256 ?? t.releaseShaUnknown())")
+    if plan.sha256 != nil { print("  \(t.releaseShaPreviewNote())") }
+    print(sep)
+    print("  \(t.releaseFormulaHeader()):")
+    for line in plan.formula.split(separator: "\n", omittingEmptySubsequences: false) {
+        print("    \(line)")
+    }
+    print(sep)
+    print("  \(t.releaseCommandsHeader()):")
+    for c in plan.commands { print("    $ \(c)") }
+    print(sep)
+    print("  \(t.releasePrepareOnly())")
+
+    if let out = opts.formulaOut {
+        do {
+            try plan.formula.write(toFile: out, atomically: true, encoding: .utf8)
+            print("  \(t.releaseFormulaWritten(out))")
+        } catch {
+            eprint("✗ \(out): \(error.localizedDescription)")
+            exit(1)
+        }
+    }
+}
+
 // MARK: - dispatch
 
 let opts = parse(CommandLine.arguments)
@@ -248,6 +310,7 @@ switch opts.positional.first ?? "list" {
 case "list":    cmdList(t, json: opts.json)
 case "status":  cmdStatus(t, json: opts.json, selector: arg(1))
 case "publish": cmdPublish(t, opts: opts, selector: arg(1))
+case "release": cmdRelease(t, opts: opts, selector: arg(1))
 case "help", "-h", "--help": print(t.help())
 case let other:
     print(t.unknownCommand(other)); print(""); print(t.help()); exit(1)
