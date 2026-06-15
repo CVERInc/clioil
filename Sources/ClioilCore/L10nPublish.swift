@@ -110,6 +110,66 @@ extension L10n {
         }
     }
 
+    public func publishCancelled() -> String {
+        switch language {
+        case .en:   return "Stopped — publish cancelled."
+        case .es:   return "Detenido — publicación cancelada."
+        case .ja:   return "停止しました — 公開をキャンセルしました。"
+        case .zhTW: return "已停止 —— 取消發布。"
+        case .ko:   return "중지됨 — 배포를 취소했습니다."
+        case .fr:   return "Arrêté — publication annulée."
+        case .de:   return "Gestoppt — Veröffentlichung abgebrochen."
+        }
+    }
+
+    public func menuBarTitle() -> String {
+        switch language {
+        case .en:   return "Publish"
+        case .es:   return "Publicar"
+        case .ja:   return "公開"
+        case .zhTW: return "發布"
+        case .ko:   return "배포"
+        case .fr:   return "Publier"
+        case .de:   return "Veröffentlichen"
+        }
+    }
+
+    public func menuBarPickProject() -> String {
+        switch language {
+        case .en:   return "Pick a project to publish:"
+        case .es:   return "Elige un proyecto para publicar:"
+        case .ja:   return "公開するプロジェクトを選択："
+        case .zhTW: return "選一個要發布的專案："
+        case .ko:   return "배포할 프로젝트를 선택하세요:"
+        case .fr:   return "Choisissez un projet à publier :"
+        case .de:   return "Projekt zum Veröffentlichen wählen:"
+        }
+    }
+
+    public func stopButton() -> String {
+        switch language {
+        case .en:   return "Stop"
+        case .es:   return "Detener"
+        case .ja:   return "停止"
+        case .zhTW: return "停止"
+        case .ko:   return "중지"
+        case .fr:   return "Arrêter"
+        case .de:   return "Stoppen"
+        }
+    }
+
+    public func quitButton() -> String {
+        switch language {
+        case .en:   return "Quit clioil"
+        case .es:   return "Salir de clioil"
+        case .ja:   return "clioil を終了"
+        case .zhTW: return "結束 clioil"
+        case .ko:   return "clioil 종료"
+        case .fr:   return "Quitter clioil"
+        case .de:   return "clioil beenden"
+        }
+    }
+
     public func publishDryRunDone() -> String {
         switch language {
         case .en:   return "Dry run only — nothing was published. Re-run without --dry-run to publish for real."

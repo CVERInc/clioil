@@ -12,14 +12,26 @@ final class PublishModel: ObservableObject {
     @Published var advice: Advice?
     @Published var finished = false
     @Published var succeeded = false
+    @Published var cancelled = false
 
     private var openedAuthURL = false
+    /// Live handle to the streaming publish, so the UI can Stop it mid-flight.
+    private var streamHandle: Shell.StreamHandle?
 
     func run(project: Project, bump: Bump, t: L10n) {
         guard !running else { return }
         running = true; log = []; statusText = ""; advice = nil; finished = false; succeeded = false
+        cancelled = false; streamHandle = nil
         openedAuthURL = false
         Task { await perform(project: project, bump: bump, t: t) }
+    }
+
+    /// Stop an in-flight publish. Terminates the streamed child process; the
+    /// stream returns with whatever it had, and `perform` finishes as cancelled.
+    func cancel() {
+        guard running else { return }
+        cancelled = true
+        streamHandle?.cancel()
     }
 
     /// Handle one streamed line. Committed lines join the log; in-place (transient)
@@ -89,9 +101,16 @@ final class PublishModel: ObservableObject {
 
         note(t.publishAuthInBrowser())
         let result = await detached {
-            ops.publishStreaming(project) { text, transient in
+            ops.publishStreamingCancellable(project) { handle in
+                Task { @MainActor in self.streamHandle = handle }
+            } onLine: { text, transient in
                 Task { @MainActor in self.handleStream(text, transient: transient) }
             }
+        }
+        // If the user pressed Stop, finish quietly as cancelled — no error advice.
+        if cancelled {
+            note(t.publishCancelled())
+            return finish(false)
         }
         let combined = result.stdout + "\n" + result.stderr
         if result.ok && !combined.contains("npm error") {

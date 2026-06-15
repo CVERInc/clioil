@@ -106,4 +106,18 @@ public struct PublishOps: Sendable {
              "npm", "publish", "--auth-type=web", "--access", "public"],
             cwd: project.path, stdin: "\n", onLine: onLine)
     }
+
+    /// Cancellable streaming publish for the menu-bar surface. Identical to
+    /// ``publishStreaming(_:onLine:)`` but hands the caller a ``Shell/StreamHandle``
+    /// via `onStart` so a "Stop" control can terminate the publish mid-flight.
+    public func publishStreamingCancellable(
+        _ project: Project,
+        onStart: (Shell.StreamHandle) -> Void,
+        onLine: @escaping @Sendable (_ text: String, _ transient: Bool) -> Void
+    ) -> Shell.Result {
+        Shell.runStreamingCancellable(
+            ["script", "-q", "/dev/null",
+             "npm", "publish", "--auth-type=web", "--access", "public"],
+            cwd: project.path, stdin: "\n", onStart: onStart, onLine: onLine)
+    }
 }

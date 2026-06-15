@@ -18,6 +18,14 @@ struct ClioilApp: App {
                 .cverTheme(ReefTheme())
         }
         .windowResizability(.contentSize)
+
+        // Menu-bar surface: publish a project and watch the log stream live,
+        // without opening the main window. Same PublishModel under the hood.
+        MenuBarExtra("clioil", systemImage: "paperplane.fill") {
+            MenuBarPublishView()
+                .preferredColorScheme(.dark)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 

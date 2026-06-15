@@ -136,6 +136,15 @@ public enum Shell {
         _ args: [String], cwd: URL? = nil, stdin: String? = nil,
         onLine: @escaping @Sendable (_ text: String, _ transient: Bool) -> Void
     ) -> Result {
+        runStreaming(args, cwd: cwd, stdin: stdin, handle: nil, onLine: onLine)
+    }
+
+    @discardableResult
+    static func runStreaming(
+        _ args: [String], cwd: URL? = nil, stdin: String? = nil,
+        handle: StreamHandle?,
+        onLine: @escaping @Sendable (_ text: String, _ transient: Bool) -> Void
+    ) -> Result {
         guard let first = args.first else {
             return Result(status: -1, stdout: "", stderr: "empty command")
         }
@@ -185,6 +194,8 @@ public enum Shell {
         } catch {
             return Result(status: -1, stdout: "", stderr: "\(first): \(error.localizedDescription)")
         }
+        // Expose the live process so a caller holding the handle can cancel it.
+        handle?.attach(process)
         if let inPipe, let stdin {
             inPipe.fileHandleForWriting.write(Data(stdin.utf8))
             try? inPipe.fileHandleForWriting.close()
@@ -194,6 +205,51 @@ public enum Shell {
         process.waitUntilExit()
         group.wait()
         return Result(status: process.terminationStatus, stdout: acc.outString, stderr: acc.errString)
+    }
+
+    /// A running streamed process you can cancel. `cancel()` terminates the
+    /// child (SIGTERM); the streaming call then returns with the partial output
+    /// collected so far and a non-zero status. Safe to call from any thread and
+    /// idempotent (cancelling twice, or after exit, is a no-op).
+    public final class StreamHandle: @unchecked Sendable {
+        private let lock = NSLock()
+        private weak var process: Process?
+        private var cancelled = false
+
+        init() {}
+
+        func attach(_ p: Process) {
+            lock.lock(); defer { lock.unlock() }
+            process = p
+            // If cancel() was called before the process started, honour it now.
+            if cancelled, p.isRunning { p.terminate() }
+        }
+
+        public func cancel() {
+            lock.lock(); defer { lock.unlock() }
+            cancelled = true
+            if let p = process, p.isRunning { p.terminate() }
+        }
+
+        public var isCancelled: Bool {
+            lock.lock(); defer { lock.unlock() }; return cancelled
+        }
+    }
+
+    /// Like ``runStreaming(_:cwd:stdin:onLine:)`` but hands the caller a
+    /// ``StreamHandle`` *before* the work blocks, so a long-running command can be
+    /// cancelled (e.g. a "Stop" button in the menu-bar publish log). The closure
+    /// receives the handle synchronously, then this call blocks until the child
+    /// exits or is cancelled. Output already streamed via `onLine` is preserved.
+    @discardableResult
+    public static func runStreamingCancellable(
+        _ args: [String], cwd: URL? = nil, stdin: String? = nil,
+        onStart: (StreamHandle) -> Void,
+        onLine: @escaping @Sendable (_ text: String, _ transient: Bool) -> Void
+    ) -> Result {
+        let handle = StreamHandle()
+        onStart(handle)
+        return runStreaming(args, cwd: cwd, stdin: stdin, handle: handle, onLine: onLine)
     }
 
     /// Run a command with the terminal's stdio inherited (no capture), so the

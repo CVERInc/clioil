@@ -666,5 +666,88 @@ for lang in Language.allCases {
     check(ok, "\(lang.rawValue): advisor strings present")
 }
 
+print("Shell.runStreamingCancellable: a long-running command streams incrementally")
+do {
+    // A shell loop that emits 5 numbered lines, one every ~50ms. We assert lines
+    // arrive *as they happen* (incrementally), not all at once at the end.
+    final class Timeline: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lines: [String] = []
+        private var firstAt: Date?
+        private var lastAt: Date?
+        func add(_ s: String) {
+            lock.lock(); defer { lock.unlock() }
+            let now = Date()
+            if firstAt == nil { firstAt = now }
+            lastAt = now
+            lines.append(s)
+        }
+        var committed: [String] { lock.lock(); defer { lock.unlock() }; return lines }
+        var spread: TimeInterval {
+            lock.lock(); defer { lock.unlock() }
+            guard let f = firstAt, let l = lastAt else { return 0 }
+            return l.timeIntervalSince(f)
+        }
+    }
+    let tl = Timeline()
+    let script = "for i in 1 2 3 4 5; do echo line-$i; sleep 0.05; done"
+    let r = Shell.runStreamingCancellable(
+        ["sh", "-c", script],
+        onStart: { _ in },               // not cancelling here
+        onLine: { text, transient in if !transient { tl.add(text) } })
+    check(r.ok, "streamed command ran to completion")
+    check(tl.committed == ["line-1", "line-2", "line-3", "line-4", "line-5"],
+          "all 5 lines arrived in order (got \(tl.committed))")
+    // If the lines had only arrived at process exit, spread would be ~0. The
+    // ~50ms-per-line cadence means a real incremental spread of >100ms.
+    check(tl.spread > 0.1, "lines arrived incrementally over time (spread \(String(format: "%.2f", tl.spread))s)")
+}
+
+print("Shell.runStreamingCancellable: cancellation stops a long command promptly")
+do {
+    final class Box: @unchecked Sendable {
+        private let lock = NSLock()
+        private var h: Shell.StreamHandle?
+        private var n = 0
+        func setHandle(_ x: Shell.StreamHandle) { lock.lock(); h = x; lock.unlock() }
+        var handle: Shell.StreamHandle? { lock.lock(); defer { lock.unlock() }; return h }
+        func bump() -> Int { lock.lock(); defer { lock.unlock() }; n += 1; return n }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return n }
+    }
+    let box = Box()
+    // A command that would run for ~10s if left alone (200 lines × 50ms). We
+    // cancel after the 2nd line arrives and assert it returns well before that.
+    let script = "for i in $(seq 1 200); do echo tick-$i; sleep 0.05; done"
+    let start = Date()
+    let r = Shell.runStreamingCancellable(
+        ["sh", "-c", script],
+        onStart: { box.setHandle($0) },
+        onLine: { text, transient in
+            guard !transient else { return }
+            if box.bump() == 2 { box.handle?.cancel() }   // cancel mid-stream
+        })
+    let elapsed = Date().timeIntervalSince(start)
+    check(!r.ok, "cancelled command reports failure (non-zero status \(r.status))")
+    check(box.handle?.isCancelled == true, "handle records the cancellation")
+    check(elapsed < 5.0, "returned promptly after cancel, not after the full ~10s (took \(String(format: "%.2f", elapsed))s)")
+    check(box.count < 200, "did NOT stream all 200 lines — stopped early (got \(box.count))")
+    check(r.stdout.contains("tick-1"), "partial output up to the cancel point is preserved")
+}
+
+print("Shell.StreamHandle: cancel before start, and double-cancel, are safe no-ops")
+do {
+    // A command cancelled in onStart (before the process even runs) must be
+    // terminated at attach and never complete successfully. Double-cancel must
+    // not crash.
+    let r = Shell.runStreamingCancellable(
+        ["sh", "-c", "sleep 5"],
+        onStart: { handle in
+            handle.cancel()
+            handle.cancel()   // idempotent — must not crash
+        },
+        onLine: { _, _ in })
+    check(!r.ok, "pre-cancelled command does not run to success")
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)
