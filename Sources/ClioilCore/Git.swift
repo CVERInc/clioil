@@ -29,16 +29,24 @@ public enum Git {
             .map { String($0) }
     }
 
-    // MARK: mutating (used only to record a version bump after a real publish)
+    // MARK: mutating (LOCAL ONLY — used to record a version bump after a real
+    // publish). These never contact a remote: clioil stages, commits and tags
+    // locally; pushing a release stays a deliberate human step.
 
-    /// Stage the given (existing) paths and commit. Returns true on success.
+    /// Stage the given (existing) paths and commit **only those paths**.
+    ///
+    /// The commit is pathspec-scoped (`git commit -- <paths>`), so any unrelated
+    /// changes the user already had staged are *not* swept into the "release vX"
+    /// commit. Returns true on success; false (committing nothing) if none of the
+    /// release paths exist on disk — we never fabricate an empty/foreign commit.
     @discardableResult
     public static func commit(_ dir: URL, message: String, paths: [String]) -> Bool {
         let fm = FileManager.default
-        for p in paths where fm.fileExists(atPath: dir.appendingPathComponent(p).path) {
-            _ = Shell.run(["git", "add", p], cwd: dir)
-        }
-        return Shell.run(["git", "commit", "-m", message], cwd: dir).ok
+        let present = paths.filter { fm.fileExists(atPath: dir.appendingPathComponent($0).path) }
+        guard !present.isEmpty else { return false }
+        for p in present { _ = Shell.run(["git", "add", p], cwd: dir) }
+        // `--` then the explicit paths: commit ONLY these, ignoring other staged work.
+        return Shell.run(["git", "commit", "-m", message, "--"] + present, cwd: dir).ok
     }
 
     @discardableResult
