@@ -133,7 +133,7 @@ func cmdList(_ t: L10n, json: Bool) {
 
 func cmdStatus(_ t: L10n, json: Bool, selector: String?) {
     let project = resolveProject(selector, t)
-    let s = StatusService().status(of: project)
+    let s = StatusService(publisher: .forEcosystem(project.ecosystem)).status(of: project)
     if json { printJSON(s); return }
 
     print("\(project.name)   v\(project.version)   \(project.displayPath)")
@@ -297,6 +297,49 @@ func cmdRelease(_ t: L10n, opts: CLIOptions, selector: String?) {
     }
 }
 
+/// PREPARE a PyPI or crates.io publish. Like `clioil release`, this is
+/// deliberately non-mutating: it prints the exact commands a human runs, and can
+/// run the registry's own SAFE dry-run (`twine check` / `cargo publish
+/// --dry-run`) — but it NEVER performs the real upload. Used for the ecosystems
+/// where clioil doesn't (yet) own an audited mutating flow.
+func cmdPrepare(_ t: L10n, opts: CLIOptions, selector: String?) {
+    let project = resolveProject(selector, t)
+    let sep = String(repeating: "─", count: 48)
+
+    let plan: PreparedPublish
+    switch project.ecosystem {
+    case "pypi":   plan = PyPIPublisher.prepare(name: project.name, version: project.version)
+    case "crates": plan = CratesPublisher.prepare(name: project.name, version: project.version)
+    default:
+        eprint(t.prepareUnsupported(project.ecosystem))
+        exit(1)
+    }
+
+    if opts.json { printJSON(plan); return }
+
+    print("\(project.name)   v\(project.version)   \(plan.ecosystem)")
+    print(sep)
+    print("  \(t.prepareDryRunHeader()) (\(plan.dryRunNote)):")
+    print("    $ \(plan.dryRunCommand.joined(separator: " "))")
+
+    // --dry-run actually RUNS the safe preview (never an upload).
+    if opts.dryRun {
+        print(sep)
+        print("  \(t.prepareRunningDryRun())")
+        let result: DryRunResult = project.ecosystem == "pypi"
+            ? PyPIPublisher().dryRun(project)
+            : CratesPublisher().dryRun(project)
+        for line in result.output.suffix(40) { print("    \(line)") }
+        print("  " + (result.ok ? t.prepareDryRunOk() : t.prepareDryRunFailed()))
+    }
+
+    print(sep)
+    print("  \(t.releaseCommandsHeader()):")
+    for c in plan.publishCommands { print("    $ \(c)") }
+    print(sep)
+    print("  \(t.releasePrepareOnly())")
+}
+
 // MARK: - dispatch
 
 let opts = parse(CommandLine.arguments)
@@ -311,6 +354,7 @@ case "list":    cmdList(t, json: opts.json)
 case "status":  cmdStatus(t, json: opts.json, selector: arg(1))
 case "publish": cmdPublish(t, opts: opts, selector: arg(1))
 case "release": cmdRelease(t, opts: opts, selector: arg(1))
+case "prepare": cmdPrepare(t, opts: opts, selector: arg(1))
 case "help", "-h", "--help": print(t.help())
 case let other:
     print(t.unknownCommand(other)); print(""); print(t.help()); exit(1)

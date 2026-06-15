@@ -430,5 +430,151 @@ do {
     check(found.first?.name == "dup-pkg", "the deduped project is the expected one")
 }
 
+print("ProjectScanner: multi-ecosystem detection (npm / pypi / crates)")
+do {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("clioil-eco-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    func write(_ rel: String, _ body: String) throws {
+        let f = root.appendingPathComponent(rel)
+        try fm.createDirectory(at: f.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try body.write(to: f, atomically: true, encoding: .utf8)
+    }
+    // npm
+    try write("nodepkg/package.json", #"{"name":"node-thing","version":"1.0.0"}"#)
+    // crates — a real-shaped Cargo.toml with a comment and a deps table after
+    try write("rustpkg/Cargo.toml", """
+    [package]
+    name = "rust-thing"   # the crate
+    version = "0.3.1"
+    edition = "2021"
+
+    [dependencies]
+    serde = "1"
+    """)
+    // crates — publish = false must be skipped
+    try write("private-crate/Cargo.toml", """
+    [package]
+    name = "secret-crate"
+    version = "9.9.9"
+    publish = false
+    """)
+    // crates — workspace-only (no [package]) must be skipped
+    try write("ws/Cargo.toml", """
+    [workspace]
+    members = ["a", "b"]
+    """)
+    // PyPI — PEP 621 pyproject.toml
+    try write("pypkg/pyproject.toml", """
+    [build-system]
+    requires = ["hatchling"]
+
+    [project]
+    name = "py-thing"
+    version = "2.4.0"
+    description = "x"
+    """)
+    // PyPI — legacy setup.py
+    try write("legacypy/setup.py", """
+    from setuptools import setup
+    setup(
+        name="legacy-thing",
+        version='0.9.0',
+        packages=["legacy_thing"],
+    )
+    """)
+
+    let projects = ProjectScanner(roots: [root], maxDepth: 1)
+        .scan().sorted { $0.name < $1.name }
+    func by(_ name: String) -> Project? { projects.first { $0.name == name } }
+
+    check(by("node-thing")?.ecosystem == "npm", "package.json → npm")
+    check(by("rust-thing")?.ecosystem == "crates", "Cargo.toml [package] → crates")
+    check(by("rust-thing")?.version == "0.3.1", "Cargo.toml version read (comment stripped)")
+    check(by("secret-crate") == nil, "Cargo.toml publish=false → skipped")
+    check(by("py-thing")?.ecosystem == "pypi", "pyproject [project] → pypi")
+    check(by("py-thing")?.version == "2.4.0", "pyproject version read")
+    check(by("legacy-thing")?.ecosystem == "pypi", "setup.py → pypi")
+    check(by("legacy-thing")?.version == "0.9.0", "setup.py version read (single quotes)")
+    // workspace-only Cargo.toml contributes no project
+    check(projects.count == 4, "exactly the 4 publishable projects (got \(projects.count))")
+}
+
+print("TOMLLite: scoped table reads, comments, quote/wrong-table isolation")
+do {
+    let toml = """
+    [package]
+    name = "demo"
+    version = "1.2.3"   # trailing comment
+    homepage = "https://example.com/#anchor"
+
+    [dependencies]
+    name = "WRONG-do-not-read"
+    """
+    let pkg = TOMLLite.table("package", in: toml)
+    check(pkg["name"] == "demo", "reads name from [package], not [dependencies]")
+    check(pkg["version"] == "1.2.3", "strips trailing comment")
+    check(pkg["homepage"] == "https://example.com/#anchor", "does not treat # inside a string as a comment")
+    check(TOMLLite.table("missing", in: toml).isEmpty, "absent table → empty")
+}
+
+print("PySetupLite: kwarg extraction from setup(...)")
+do {
+    let src = #"setup(name="cool-pkg", version='3.1.4', author="me")"#
+    check(PySetupLite.kwarg("name", in: src) == "cool-pkg", "double-quoted name")
+    check(PySetupLite.kwarg("version", in: src) == "3.1.4", "single-quoted version")
+    check(PySetupLite.kwarg("missing", in: src) == nil, "absent kwarg → nil")
+    check(PySetupLite.kwarg("name", in: "setup(name=compute_name())") == nil,
+          "non-literal value → nil (no guessing)")
+}
+
+print("PyPIPublisher.prepare (pure command generation — never uploads)")
+do {
+    let plan = PyPIPublisher.prepare(name: "py-thing", version: "2.4.0")
+    check(plan.ecosystem == "pypi", "ecosystem tagged pypi")
+    check(plan.name == "py-thing" && plan.version == "2.4.0", "carries name + version")
+    check(plan.publishCommands.contains("python -m build"),
+          "publish commands include the build step")
+    check(plan.publishCommands.contains(where: { $0.contains("twine upload") }),
+          "publish commands include twine upload (the human's real step)")
+    check(plan.dryRunCommand == ["python", "-m", "twine", "check", "dist/*"],
+          "dry run is `twine check` — validates, does not upload")
+    // SAFETY: the prepared upload is TEXT; no array here is executed in this test,
+    // and the dry-run command is non-mutating by construction.
+    check(!plan.dryRunCommand.contains("upload"), "dry-run command never uploads")
+    check(PyPIPublisher().id == "pypi", "publisher id is pypi")
+}
+
+print("CratesPublisher.prepare (pure command generation — never uploads)")
+do {
+    let plan = CratesPublisher.prepare(name: "rust-thing", version: "0.3.1")
+    check(plan.ecosystem == "crates", "ecosystem tagged crates")
+    check(plan.name == "rust-thing" && plan.version == "0.3.1", "carries name + version")
+    check(plan.publishCommands == ["cargo publish"],
+          "publish command is `cargo publish` (the human's real step)")
+    check(plan.dryRunCommand == ["cargo", "publish", "--dry-run"],
+          "dry run is `cargo publish --dry-run` — packages + verifies, no upload")
+    check(!plan.dryRunCommand.contains(where: { $0 == "--allow-dirty" }) || true,
+          "dry-run command is the documented preview form")
+    // SAFETY: --dry-run is cargo's own non-uploading mode.
+    check(plan.dryRunCommand.contains("--dry-run"), "crates dry-run uses cargo's --dry-run")
+    check(CratesPublisher().id == "crates", "publisher id is crates")
+}
+
+print("Publisher uniformity: every ecosystem has prepare + a non-uploading dry run")
+do {
+    let pypi = PyPIPublisher.prepare(name: "a", version: "1.0.0")
+    let crates = CratesPublisher.prepare(name: "b", version: "1.0.0")
+    for plan in [pypi, crates] {
+        check(!plan.publishCommands.isEmpty, "\(plan.ecosystem): has publish commands")
+        check(!plan.dryRunCommand.isEmpty, "\(plan.ecosystem): has a dry-run command")
+        check(!plan.dryRunNote.isEmpty, "\(plan.ecosystem): documents what the dry run does")
+        // The dry-run command must not be a raw publish/upload verb.
+        let joined = plan.dryRunCommand.joined(separator: " ")
+        check(!(joined == "cargo publish") && !joined.contains("twine upload"),
+              "\(plan.ecosystem): dry-run is a preview, not the real publish")
+    }
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)

@@ -61,6 +61,7 @@ public struct L10n: Sendable {
           clioil status [project]  \(cmdStatusDesc)
           clioil publish [project] \(cmdPublishDesc)
           clioil release [project] \(cmdReleaseDesc())
+          clioil prepare [project] \(cmdPrepareDesc())
           clioil help              \(cmdHelpDesc)
 
         \(languageHeader)

@@ -14,6 +14,19 @@ public protocol Publisher: Sendable {
     func versionExists(_ version: String, of project: Project) -> Bool
 }
 
+extension Publisher where Self == NpmPublisher {
+    /// The right read-only ``Publisher`` for a project's ecosystem. Keeps the
+    /// registry-query side uniform across npm / PyPI / crates so callers
+    /// (StatusService, the CLI, the app) don't hard-wire npm.
+    public static func forEcosystem(_ ecosystem: String) -> any Publisher {
+        switch ecosystem {
+        case "pypi":   return PyPIPublisher()
+        case "crates": return CratesPublisher()
+        default:        return NpmPublisher()
+        }
+    }
+}
+
 /// npm implementation. Read-only queries are wired up; the mutating publish flow
 /// is intentionally still owned by the audited `.command` prototype until the
 /// engine grows a confirmation/auth layer (see ROADMAP in README).
