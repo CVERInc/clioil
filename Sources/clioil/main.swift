@@ -1,6 +1,15 @@
 import Foundation
 import ClioilCore
 
+/// Tiny thread-safe holder to hand a Sendable result back across the Task →
+/// semaphore bridge without tripping the concurrency checker.
+final class RemediationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Remediation?
+    func set(_ r: Remediation) { lock.lock(); stored = r; lock.unlock() }
+    var value: Remediation? { lock.lock(); defer { lock.unlock() }; return stored }
+}
+
 // clioil — CLI shell over ClioilCore.
 //   clioil list                  list publishable projects
 //   clioil status  [project]     read-only release-readiness report
@@ -25,6 +34,7 @@ struct CLIOptions {
     var noTest = false
     var noInstall = false
     var yes = false
+    var ai = false
     var bump: Bump?
     var slug: String?
     var formulaOut: String?
@@ -58,6 +68,7 @@ func parse(_ argv: [String]) -> CLIOptions {
         case a == "--no-test":   o.noTest = true
         case a == "--no-install": o.noInstall = true
         case a == "--yes" || a == "-y": o.yes = true
+        case a == "--ai": o.ai = true
         case a == "--version" || a == "-V": o.showVersion = true
         default: o.positional.append(a)
         }
@@ -114,6 +125,28 @@ func resolveProject(_ selector: String?, _ t: L10n) -> Project {
 
 func printPickOne(_ projects: [Project]) {
     for p in projects { print("  • \(p.name)  (\(p.displayPath))") }
+}
+
+/// Run the AI remediation advisor (opt-in via `--ai`) and print its hint. The
+/// advisor itself degrades gracefully (on-device → Claude if a key is present →
+/// built-in guidance), so this always prints *something* useful and never
+/// crashes. Bridged to the sync CLI with a semaphore — safe here because the CLI
+/// runner is not main-actor-bound.
+func printAIHint(_ t: L10n, stdout: String, stderr: String) {
+    let advisor = RemediationAdvisor(t)
+    let sem = DispatchSemaphore(value: 0)
+    let box = RemediationBox()
+    Task {
+        let result = await advisor.advise(stdout: stdout, stderr: stderr)
+        box.set(result)
+        sem.signal()
+    }
+    sem.wait()
+    guard let r = box.value else { return }
+    print("  💡 \(t.advisorHintHeader()) [\(t.advisorSourceLabel(r.source))]")
+    for line in r.suggestion.split(whereSeparator: \.isNewline) {
+        print("     \(line)")
+    }
 }
 
 // MARK: - commands
@@ -233,6 +266,8 @@ func cmdPublish(_ t: L10n, opts: CLIOptions, selector: String?) {
             : NpmPublisher().versionExists(version, of: project) ? .versionExists
             : .unknown
         showAdvice(kind)
+        // Opt-in AI remediation hint (on-device → Claude fallback → built-in).
+        if opts.ai { printAIHint(t, stdout: "", stderr: kind.rawValue) }
         exit(1)
     }
 

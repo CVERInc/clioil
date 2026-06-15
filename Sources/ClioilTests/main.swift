@@ -576,5 +576,95 @@ do {
     }
 }
 
+print("ClaudeModel constants (current IDs, not stale — asserted exactly)")
+check(ClaudeModel.opus == "claude-opus-4-8", "Opus 4.8 id")
+check(ClaudeModel.sonnet == "claude-sonnet-4-6", "Sonnet 4.6 id")
+check(ClaudeModel.haiku == "claude-haiku-4-5-20251001", "Haiku 4.5 id")
+check(ClaudeModel.defaultRemediation == ClaudeModel.haiku, "default remediation model is cost-appropriate (Haiku)")
+// Guard against accidentally pinning a retired/older id.
+check(!ClaudeModel.opus.contains("4-5") && !ClaudeModel.opus.contains("4-1"),
+      "Opus id is not an older 4.5/4.1 string")
+check(ClaudeModel.sonnet.hasPrefix("claude-sonnet-4-6"), "Sonnet id is the 4.6 line")
+
+print("RemediationAdvisor: Claude key resolution (env-driven, never hardcoded)")
+do {
+    let t = L10n(.en)
+    // No key anywhere → fallback unavailable, claudeKey nil.
+    let none = RemediationAdvisor(t, environment: [:])
+    check(none.claudeKey == nil, "no env key → claudeKey nil")
+    check(!none.claudeFallbackAvailable, "no key → fallback unavailable")
+
+    // Empty string key is treated as absent (degrade cleanly, don't 'enable' it).
+    let empty = RemediationAdvisor(t, apiKey: "   ", environment: ["ANTHROPIC_API_KEY": ""])
+    check(empty.claudeKey == nil, "blank/whitespace key → treated as absent")
+
+    // CLIOIL_-scoped key beats the generic one; explicit override beats both.
+    let scoped = RemediationAdvisor(t, environment: ["ANTHROPIC_API_KEY": "generic",
+                                                     "CLIOIL_ANTHROPIC_API_KEY": "scoped"])
+    check(scoped.claudeKey == "scoped", "CLIOIL_ANTHROPIC_API_KEY wins over ANTHROPIC_API_KEY")
+    check(scoped.claudeFallbackAvailable, "key present → fallback available")
+    let override = RemediationAdvisor(t, apiKey: "explicit",
+                                      environment: ["CLIOIL_ANTHROPIC_API_KEY": "scoped"])
+    check(override.claudeKey == "explicit", "explicit apiKey override wins")
+}
+
+print("RemediationAdvisor: prompt + deterministic text + Claude response parsing")
+do {
+    let t = L10n(.en)
+    let baseline = ErrorAdvisor(t).advise(.versionExists)
+    let prompt = RemediationAdvisor.buildPrompt(kind: .versionExists, baseline: baseline,
+                                                rawOutput: "npm error E403 cannot publish over",
+                                                l10n: t)
+    check(prompt.contains("versionExists"), "prompt names the classification")
+    check(prompt.contains(baseline.title), "prompt grounds in clioil's own guidance")
+    check(prompt.contains("E403"), "prompt includes the real error tail")
+
+    let det = RemediationAdvisor.deterministicText(baseline, l10n: t)
+    check(det.contains(t.advisorNoAI()), "deterministic text is framed as 'no AI available'")
+    check(det.contains(baseline.title), "deterministic text carries the guidance title")
+    check(!det.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "deterministic text is never empty")
+
+    // Parse a realistic Claude Messages API success body.
+    let json = #"{"content":[{"type":"text","text":"Bump the version, then republish."}],"stop_reason":"end_turn"}"#
+    check(RemediationAdvisor.extractClaudeText(Data(json.utf8)) == "Bump the version, then republish.",
+          "extracts the text block from a Claude response")
+    check(RemediationAdvisor.extractClaudeText(Data("{}".utf8)) == nil, "malformed/empty response → nil (no crash)")
+    let toolOnly = #"{"content":[{"type":"tool_use","id":"x","name":"y","input":{}}]}"#
+    check(RemediationAdvisor.extractClaudeText(Data(toolOnly.utf8)) == nil, "no text block → nil")
+}
+
+print("RemediationAdvisor: advise() always returns non-empty advice, never crashes (no key)")
+do {
+    let t = L10n(.en)
+    // No Claude key → on-device is attempted; if unavailable, we MUST get the
+    // clean deterministic 'no AI available' message. Either way: non-empty,
+    // a valid source, and no crash.
+    let advisor = RemediationAdvisor(t, environment: [:])
+    let rem = await advisor.advise(kind: .notLoggedIn)
+    check(!rem.suggestion.trimmingCharacters(in: .whitespaces).isEmpty,
+          "advise returns a non-empty suggestion (source: \(rem.source.rawValue))")
+    check([.onDevice, .none].contains(rem.source),
+          "with no key, source is on-device or none — never claude")
+    if rem.source == .none {
+        check(rem.suggestion.contains(t.advisorNoAI()),
+              "no-AI path is clearly labelled as built-in guidance")
+    }
+    // From raw output too — classification still happens, still safe.
+    let rem2 = await advisor.advise(stdout: "", stderr: "npm error code ENEEDAUTH need auth")
+    check(!rem2.suggestion.isEmpty, "advise(stdout:stderr:) returns a suggestion")
+}
+
+print("L10nAdvisor: every language has system prompt + source labels")
+for lang in Language.allCases {
+    let t = L10n(lang)
+    let ok = !t.advisorSystemPrompt().isEmpty
+        && !t.advisorAskInLanguage().isEmpty
+        && !t.advisorNoAI().isEmpty
+        && !t.advisorSourceLabel(.onDevice).isEmpty
+        && !t.advisorSourceLabel(.claude).isEmpty
+        && !t.advisorSourceLabel(.none).isEmpty
+    check(ok, "\(lang.rawValue): advisor strings present")
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)
