@@ -240,5 +240,195 @@ do {
     check(sink.committed.contains("https://www.npmjs.com/auth/cli/xyz"), "auth URL committed intact")
 }
 
+print("ReleasePrep.slug (parse owner/repo from git remotes)")
+check(ReleasePrep.slug(fromRemote: "git@github.com:CVERInc/clioil.git") == "CVERInc/clioil",
+      "ssh form → CVERInc/clioil")
+check(ReleasePrep.slug(fromRemote: "https://github.com/CVERInc/clioil.git") == "CVERInc/clioil",
+      "https .git form → CVERInc/clioil")
+check(ReleasePrep.slug(fromRemote: "https://github.com/CVERInc/clioil") == "CVERInc/clioil",
+      "https no-.git form → CVERInc/clioil")
+check(ReleasePrep.slug(fromRemote: "ssh://git@github.com/CVERInc/clioil.git") == "CVERInc/clioil",
+      "ssh:// scheme form → CVERInc/clioil")
+check(ReleasePrep.slug(fromRemote: "git@gitlab.com:foo/bar.git") == nil,
+      "non-GitHub host → nil")
+check(ReleasePrep.slug(fromRemote: "") == nil, "empty remote → nil")
+check(ReleasePrep.slug(fromRemote: "https://github.com/onlyowner") == nil,
+      "owner-only (no repo) → nil")
+
+print("ReleasePrep.tarballURL + HomebrewFormula.className")
+check(ReleasePrep.tarballURL(slug: "CVERInc/clioil", tag: "v1.2.3")
+      == "https://github.com/CVERInc/clioil/archive/refs/tags/v1.2.3.tar.gz",
+      "deterministic GitHub source tarball URL")
+check(HomebrewFormula.className(for: "clioil") == "Clioil", "clioil → Clioil")
+check(HomebrewFormula.className(for: "cli-oil") == "CliOil", "cli-oil → CliOil")
+check(HomebrewFormula.className(for: "my_cool.tool") == "MyCoolTool", "splits on non-alnum")
+check(HomebrewFormula.className(for: "123") == "123", "numeric-only stays as-is")
+
+print("ReleasePrep.hexSHA256 (known vector)")
+// echo -n "abc" | shasum -a 256 → ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+check(ReleasePrep.hexSHA256(Data("abc".utf8))
+      == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "SHA-256(\"abc\") matches the known test vector")
+
+print("ReleasePrep.makePlan (pure, no I/O)")
+do {
+    let plan = ReleasePrep.makePlan(
+        repoSlug: "CVERInc/clioil", version: "0.4.0",
+        sha256: "deadbeef", license: "MIT")
+    check(plan.tag == "v0.4.0", "tag is v-prefixed version")
+    check(plan.version == "0.4.0", "version carried")
+    check(plan.tarballURL.hasSuffix("v0.4.0.tar.gz"), "tarball URL targets the tag")
+    check(plan.formula.contains("class Clioil < Formula"), "formula has the right class name")
+    check(plan.formula.contains("sha256 \"deadbeef\""), "formula embeds the supplied sha256")
+    check(plan.formula.contains("version \"0.4.0\""), "formula embeds the version")
+    check(plan.formula.contains("license \"MIT\""), "formula embeds the license")
+    check(plan.formula.contains("https://github.com/CVERInc/clioil"), "homepage points at the repo")
+    // SAFETY: the prepared commands are TEXT for a human; none are executed here.
+    // But the plan must still SURFACE the publish step honestly.
+    check(plan.commands.contains(where: { $0.contains("git push") }),
+          "publish commands include the push the human runs")
+    check(plan.commands.contains(where: { $0.contains("gh release create") }),
+          "publish commands include gh release create")
+}
+
+print("HomebrewFormula.render: missing sha256 → safe placeholder, not a fake hash")
+do {
+    let f = HomebrewFormula.render(
+        className: "Clioil", repoName: "clioil", version: "1.0.0",
+        url: "https://github.com/CVERInc/clioil/archive/refs/tags/v1.0.0.tar.gz",
+        sha256: nil, desc: nil, license: nil)
+    check(f.contains("REPLACE_WITH_SHA256"), "no sha → explicit REPLACE placeholder")
+    check(f.contains("shasum -a 256"), "tells the human how to compute the real sha")
+    check(!f.contains("license \"\""), "no empty license line when license is nil")
+}
+
+print("HomebrewFormula.render: desc with quotes is escaped (valid Ruby string)")
+do {
+    let f = HomebrewFormula.render(
+        className: "X", repoName: "x", version: "1.0.0", url: "u",
+        sha256: "x", desc: "a \"quoted\" tool", license: nil)
+    check(f.contains("desc \"a \\\"quoted\\\" tool\""), "double-quotes inside desc are backslash-escaped")
+}
+
+print("Git.commit SAFETY: pathspec-scoped — never sweeps unrelated staged work")
+do {
+    let fm = FileManager.default
+    let repo = fm.temporaryDirectory.appendingPathComponent("clioil-commit-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: repo) }
+    try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+    func git(_ a: [String]) { _ = Shell.run(["git"] + a, cwd: repo) }
+    func write(_ n: String, _ b: String) throws {
+        try b.write(to: repo.appendingPathComponent(n), atomically: true, encoding: .utf8)
+    }
+    git(["init", "-q"]); git(["config", "user.email", "t@t.test"]); git(["config", "user.name", "t"])
+    try write("package.json", #"{"name":"x","version":"1.0.0"}"#)
+    try write("secret.txt", "v1")
+    git(["add", "-A"]); git(["commit", "-q", "-m", "init"])
+
+    // User edits BOTH package.json (the release file) and an unrelated file, and
+    // happens to have staged the unrelated change already.
+    try write("package.json", #"{"name":"x","version":"1.0.1"}"#)
+    try write("secret.txt", "v2-unrelated-WIP")
+    git(["add", "secret.txt"])   // unrelated work pre-staged
+
+    let ok = Git.commit(repo, message: "release v1.0.1", paths: ["package.json"])
+    check(ok, "commit succeeds")
+    // The release commit must contain ONLY package.json.
+    let files = Shell.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd: repo)
+        .stdout.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
+    check(files == ["package.json"], "release commit contains ONLY package.json (got \(files))")
+    // The unrelated change stays staged, untouched.
+    let porcelain = Shell.run(["git", "status", "--porcelain"], cwd: repo).stdout
+    check(porcelain.contains("secret.txt"), "unrelated staged change is left alone, not committed")
+}
+
+print("Git.commit: no release paths present → commits nothing (no foreign/empty commit)")
+do {
+    let fm = FileManager.default
+    let repo = fm.temporaryDirectory.appendingPathComponent("clioil-commit2-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: repo) }
+    try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+    func git(_ a: [String]) { _ = Shell.run(["git"] + a, cwd: repo) }
+    git(["init", "-q"]); git(["config", "user.email", "t@t.test"]); git(["config", "user.name", "t"])
+    try "a".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+    git(["add", "-A"]); git(["commit", "-q", "-m", "init"])
+    // Stage some unrelated change, then ask to commit a non-existent release file.
+    try "b".write(to: repo.appendingPathComponent("staged.txt"), atomically: true, encoding: .utf8)
+    git(["add", "staged.txt"])
+    let before = Shell.run(["git", "rev-parse", "HEAD"], cwd: repo).stdout
+    let ok = Git.commit(repo, message: "release v9.9.9", paths: ["package.json"])
+    let after = Shell.run(["git", "rev-parse", "HEAD"], cwd: repo).stdout
+    check(!ok, "returns false when no release path exists")
+    check(before == after, "HEAD unchanged — staged junk was NOT committed under a release message")
+}
+
+print("No-push guarantee: ClioilCore never references a push/remote mutation")
+do {
+    // Defense-in-depth: prove the engine source contains no git push / publish
+    // mutation. (Read-only `git remote get-url` is allowed; `push` is not.)
+    let fm = FileManager.default
+    let coreDir = URL(fileURLWithPath: #filePath)        // .../Sources/ClioilTests/main.swift
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("ClioilCore")
+    var offenders: [String] = []
+    if let files = try? fm.contentsOfDirectory(at: coreDir, includingPropertiesForKeys: nil) {
+        for f in files where f.pathExtension == "swift" {
+            guard let src = try? String(contentsOf: f, encoding: .utf8) else { continue }
+            for line in src.split(whereSeparator: \.isNewline) {
+                let l = String(line)
+                if l.contains("//") { continue }                 // skip comment-only lines
+                if l.contains("\"git\", \"push\"") || l.contains("\"push\"") {
+                    offenders.append("\(f.lastPathComponent): \(l.trimmingCharacters(in: .whitespaces))")
+                }
+            }
+        }
+    }
+    check(offenders.isEmpty, "no executed `git push` in ClioilCore (offenders: \(offenders))")
+}
+
+print("PublishOps.needsInstall: package.json newer than node_modules → reinstall")
+do {
+    let fm = FileManager.default
+    let dir = fm.temporaryDirectory.appendingPathComponent("clioil-mtime-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: dir) }
+    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    let modules = dir.appendingPathComponent("node_modules")
+    try fm.createDirectory(at: modules, withIntermediateDirectories: true)
+    let pkg = dir.appendingPathComponent("package.json")
+    try #"{"name":"x","version":"1.0.0"}"#.write(to: pkg, atomically: true, encoding: .utf8)
+    let proj = Project(path: dir, name: "x", version: "1.0.0", ecosystem: "npm")
+    let ops = PublishOps()
+
+    // Make node_modules OLDER than package.json deterministically.
+    let old = Date(timeIntervalSinceNow: -3600)
+    try fm.setAttributes([.modificationDate: old], ofItemAtPath: modules.path)
+    let newer = Date()
+    try fm.setAttributes([.modificationDate: newer], ofItemAtPath: pkg.path)
+    check(ops.needsInstall(proj), "package.json mtime > node_modules mtime → needs install")
+
+    // Now make node_modules newer than package.json → no reinstall.
+    try fm.setAttributes([.modificationDate: Date(timeIntervalSinceNow: 3600)], ofItemAtPath: modules.path)
+    check(!ops.needsInstall(proj), "fresh node_modules (newer than manifest) → no install")
+}
+
+print("ProjectScanner: symlinked root is de-duplicated against the real path")
+do {
+    let fm = FileManager.default
+    let base = fm.temporaryDirectory.appendingPathComponent("clioil-sym-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: base) }
+    let real = base.appendingPathComponent("real")
+    let pkgDir = real.appendingPathComponent("pkg")
+    try fm.createDirectory(at: pkgDir, withIntermediateDirectories: true)
+    try #"{"name":"dup-pkg","version":"1.0.0"}"#
+        .write(to: pkgDir.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+    // A second root that is a symlink to `real`.
+    let link = base.appendingPathComponent("link")
+    try fm.createSymbolicLink(at: link, withDestinationURL: real)
+
+    let found = ProjectScanner(roots: [real, link], maxDepth: 1).scan()
+    check(found.count == 1, "same project via real + symlinked root counted once (got \(found.count))")
+    check(found.first?.name == "dup-pkg", "the deduped project is the expected one")
+}
+
 print(failures == 0 ? "\nAll passed ✅" : "\n\(failures) failed ❌")
 exit(failures == 0 ? 0 : 1)

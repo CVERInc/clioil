@@ -22,6 +22,7 @@ swift build
 swift run clioil list                       # scan & list publishable projects (pure Swift, no node needed)
 swift run clioil status <project>           # read-only release-readiness report
 swift run clioil publish <project> --dry-run # guided publish, stops before the real publish
+swift run clioil release <project>          # PREPARE a GitHub Release + Homebrew formula (preview only — never publishes)
 swift run clioil --version
 swift run ClioilApp                         # native SwiftUI app: browse projects + readiness
 swift run ClioilTests                       # framework-free test runner (no Xcode required)
@@ -47,6 +48,15 @@ The **publish** flow is implemented in Swift (`PublishOps.swift`): an interactiv
 queries (`latest`, `versionExists`) are wired into `NpmPublisher`, and
 `scripts/build-app.sh` produces the double-clickable app.
 
+The **release** flow (`ReleasePlan.swift`) *prepares* a GitHub Release + Homebrew
+formula — and stops there, on purpose. It computes the tag, the GitHub source
+tarball URL, a **local** SHA-256 preview (via `git archive`, no network), the
+rendered Homebrew formula (Ruby), and the exact commands you'd run to publish —
+then prints them for you to review. clioil never creates a tag, cuts a release,
+or pushes a tap: cutting a release is the irreversible step, so it stays a
+deliberate human action. The same logic backs the app's "Prepare release"
+section and `clioil release <project> --json` / `--formula-out <path>`.
+
 ## Why a separate project (and not part of clikae)
 
 `clikae` manages your AI coding **identities** — a two-way, everyday "manage myself"
@@ -67,7 +77,7 @@ ClioilCore  ── pure engine, no UI, no globals
   ├─ Project / Bump   ecosystem-agnostic models
   └─ Shell            safe process runner (deadlock-free pipe draining)
 
-clioil (CLI)   ── thin shell over the engine; `list` / `status` / `publish`
+clioil (CLI)   ── thin shell over the engine; `list` / `status` / `publish` / `release`
 ClioilApp      ── SwiftUI app — browse projects, see readiness, publish from the window
                   (MenuBarExtra "click to ship" mode planned)
 ```
@@ -92,7 +102,10 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
       *Honest scope:* the on-device ~3B model is great for guidance/classification/summary,
       not heavy stack-trace reasoning — for genuine debugging the app optionally escalates
       to a larger model (Claude API). On-device first, cloud only when stuck.
-- [ ] More ecosystems: PyPI, crates, GitHub Releases, Homebrew
+- [x] **GitHub Releases + Homebrew — *prepare* path** (`clioil release`): generate the
+      tag, tarball URL, local SHA-256 preview, formula, and the exact publish commands.
+      Cutting the actual release stays a human step (clioil never tags/releases/pushes).
+- [ ] More ecosystems: PyPI, crates (and the *execute* side of release, behind explicit confirm)
 
 ## Languages
 
