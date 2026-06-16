@@ -28,7 +28,7 @@ cat > "$DEST/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>net.cver.clioil</string>
   <key>CFBundleExecutable</key><string>ClioilApp</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.0.1</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
