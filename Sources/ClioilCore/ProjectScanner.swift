@@ -116,6 +116,29 @@ public struct ProjectScanner: Sendable {
         func walk(_ dir: URL, depth: Int) {
             let manifest = dir.appendingPathComponent(file)
             if fm.fileExists(atPath: manifest.path) { results.append(manifest) }
+
+            // Monorepo descent: also look one level into the conventional
+            // workspace dirs (packages/*, apps/*) so nested publishable packages
+            // — e.g. signet/packages/web or reef/packages/* — are found even
+            // though the manifest sits deeper than maxDepth.
+            for mono in ["packages", "apps"] {
+                let monoDir = dir.appendingPathComponent(mono)
+                var monoIsDir: ObjCBool = false
+                guard fm.fileExists(atPath: monoDir.path, isDirectory: &monoIsDir), monoIsDir.boolValue
+                else { continue }
+                let kids = (try? fm.contentsOfDirectory(
+                    at: monoDir,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )) ?? []
+                for kid in kids {
+                    let kidIsDir = (try? kid.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                    guard kidIsDir else { continue }
+                    let m = kid.appendingPathComponent(file)
+                    if fm.fileExists(atPath: m.path) { results.append(m) }
+                }
+            }
+
             guard depth < maxDepth else { return }
 
             let entries = (try? fm.contentsOfDirectory(
