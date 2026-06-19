@@ -22,7 +22,7 @@ final class RemediationBox: @unchecked Sendable {
 // release flags: --slug <owner/repo> (override remote), --formula-out <path> (write formula)
 
 let home = FileManager.default.homeDirectoryForCurrentUser
-let defaultRoots = [home, home.appendingPathComponent("Desktop/GitHub")]
+let defaultRoots = [home, home.appendingPathComponent("Developer"), home.appendingPathComponent("Desktop/GitHub")]
 
 // MARK: - arg parsing
 

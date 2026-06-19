@@ -84,7 +84,7 @@ struct ContentView: View {
 
     private func load() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        projects = ProjectScanner(roots: [home, home.appendingPathComponent("Desktop/GitHub")], maxDepth: 1)
+        projects = ProjectScanner(roots: [home, home.appendingPathComponent("Developer"), home.appendingPathComponent("Desktop/GitHub")], maxDepth: 1)
             .scan()
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
     }

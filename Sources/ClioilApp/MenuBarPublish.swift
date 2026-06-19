@@ -157,7 +157,7 @@ struct MenuBarPublishView: View {
     private func loadIfNeeded() {
         guard projects.isEmpty else { return }
         let home = FileManager.default.homeDirectoryForCurrentUser
-        projects = ProjectScanner(roots: [home, home.appendingPathComponent("Desktop/GitHub")],
+        projects = ProjectScanner(roots: [home, home.appendingPathComponent("Developer"), home.appendingPathComponent("Desktop/GitHub")],
                                   maxDepth: 1)
             .scan()
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
