@@ -6,8 +6,8 @@
 
 `clioil` turns "publish this package" from a pile of ecosystem-specific incantations
 (`npm publish --access public`, `twine upload`, `cargo publish`, `gh release create`,
-bumping a Homebrew formula's SHA…) into a single guided flow that holds your hand
-instead of spitting cryptic errors at you.
+bumping a Homebrew formula's SHA…) into a single guided flow that walks you through it
+instead of leaving you to decode each platform's errors.
 
 It's the productized successor to a personal `發布 npm 專案.command` script: same
 "double-click, pick a project, ship it" feel — but native, multi-ecosystem, and
