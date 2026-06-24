@@ -23,6 +23,7 @@ swift run clioil list                       # scan & list publishable projects (
 swift run clioil status <project>           # read-only release-readiness report
 swift run clioil publish <project> --dry-run # guided publish, stops before the real publish
 swift run clioil release <project>          # PREPARE a GitHub Release + Homebrew formula (preview only — never publishes)
+swift run clioil prepare <project>          # PREPARE a PyPI / crates publish (preview only — never uploads)
 swift run clioil --version
 swift run ClioilApp                         # native SwiftUI app: browse projects + readiness
 swift run ClioilTests                       # framework-free test runner (no Xcode required)
@@ -35,6 +36,14 @@ drive it non-interactively: `--bump <patch|minor|major>`, `--no-test`,
 `--no-install`, `--yes`, `--dry-run`. On failure it prints localized, actionable
 guidance instead of a raw npm stack (`ErrorAdvisor`). The real publish is the
 only irreversible step and always requires explicit confirmation.
+
+Pass `--ai` to add an opt-in remediation hint when a publish fails. It degrades
+honestly: it tries Apple's on-device Foundation Models first (no network,
+private), falls back to the Claude API *only* if a key is present
+(`ANTHROPIC_API_KEY`, or `CLIOIL_ANTHROPIC_API_KEY` to scope it to clioil), and
+otherwise prints clioil's built-in guidance. With no on-device model and no key
+it still says something useful — it just never silently calls the network and
+never claims an AI ran when none did.
 
 `status` shows, for a project: its npm latest, whether the local version is
 already published (so you know a publish would fail), whether the git tree is
@@ -57,6 +66,15 @@ or pushes a tap: cutting a release is the irreversible step, so it stays a
 deliberate human action. The same logic backs the app's "Prepare release"
 section and `clioil release <project> --json` / `--formula-out <path>`.
 
+The **prepare** flow (`PreparedPublish.swift`) covers the ecosystems where clioil
+doesn't (yet) own an audited mutating publish — **PyPI** and **crates.io**. Like
+`release`, it's deliberately non-mutating: it prints the exact commands a human
+runs (`python -m build` → `twine upload`, or `cargo publish`) and, with
+`--dry-run`, runs the registry's *own* safe preview — `twine check` (validates the
+built artifacts, no network upload) for PyPI, `cargo publish --dry-run` (packages
+and verifies the crate without uploading) for crates. The actual upload stays a
+human step; clioil never publishes here. Add `--json` for the structured plan.
+
 ## Why a separate project (and not part of clikae)
 
 `clikae` manages your AI coding **identities** — a two-way, everyday "manage myself"
@@ -77,7 +95,7 @@ ClioilCore  ── pure engine, no UI, no globals
   ├─ Project / Bump   ecosystem-agnostic models
   └─ Shell            safe process runner (deadlock-free pipe draining)
 
-clioil (CLI)   ── thin shell over the engine; `list` / `status` / `publish` / `release`
+clioil (CLI)   ── thin shell over the engine; `list` / `status` / `publish` / `release` / `prepare`
 ClioilApp      ── SwiftUI app — browse projects, see readiness, publish from the window
                   (MenuBarExtra "click to ship" mode planned)
 ```
@@ -96,16 +114,20 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] `ErrorAdvisor` — localized, actionable guidance on publish failures (7 langs)
 - [x] **SwiftUI app** — `ClioilApp`: browse projects, see readiness, and **publish from the window** (reepub-themed). Double-clickable `.app` via `scripts/build-app.sh`.
 - [ ] App: menu-bar (MenuBarExtra) mode; live-streaming publish log
-- [ ] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
-      translate ugly registry errors into plain-language next steps, classify known
-      failure modes (version exists / not logged in / missing access), draft changelogs.
+- [~] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
+      translate ugly registry errors into plain-language next steps. *Done:* the
+      `publish --ai` remediation hint (on-device first → Claude API only if a key is
+      set → built-in guidance), via `RemediationAdvisor`. *Still pending:* drafting
+      changelogs, and surfacing the hint in the app.
       *Honest scope:* the on-device ~3B model is great for guidance/classification/summary,
-      not heavy stack-trace reasoning — for genuine debugging the app optionally escalates
+      not heavy stack-trace reasoning — for genuine debugging it optionally escalates
       to a larger model (Claude API). On-device first, cloud only when stuck.
 - [x] **GitHub Releases + Homebrew — *prepare* path** (`clioil release`): generate the
       tag, tarball URL, local SHA-256 preview, formula, and the exact publish commands.
       Cutting the actual release stays a human step (clioil never tags/releases/pushes).
-- [ ] More ecosystems: PyPI, crates (and the *execute* side of release, behind explicit confirm)
+- [~] More ecosystems: **PyPI, crates** — *prepare* path done (`clioil prepare`:
+      preview commands + the registry's own safe dry-run, never uploads). Still
+      pending: the *execute* side for these (and for `release`), behind explicit confirm.
 
 ## Languages
 
