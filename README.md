@@ -91,13 +91,15 @@ The split mirrors that philosophy — one engine, many shells:
 ClioilCore  ── pure engine, no UI, no globals
   ├─ ProjectScanner   scan roots → publishable projects (parses manifests in Swift)
   ├─ Publisher        plugin seam: one per ecosystem
-  │    └─ NpmPublisher    npm (read-only queries today)
+  │    ├─ NpmPublisher       npm (read-only queries + the audited publish flow)
+  │    ├─ PyPIPublisher      PyPI  (prepare/preview-only — twine check, never uploads)
+  │    └─ CratesPublisher    crates.io (prepare/preview-only — cargo publish --dry-run)
   ├─ Project / Bump   ecosystem-agnostic models
-  └─ Shell            safe process runner (deadlock-free pipe draining)
+  └─ Shell            safe process runner (deadlock-free draining; streaming + cancellable)
 
 clioil (CLI)   ── thin shell over the engine; `list` / `status` / `publish` / `release` / `prepare`
 ClioilApp      ── SwiftUI app — browse projects, see readiness, publish from the window
-                  (MenuBarExtra "click to ship" mode planned)
+                  (MenuBarExtra "click to ship" mode implemented in code; runtime dogfood pending)
 ```
 
 Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
@@ -113,7 +115,9 @@ Adding an ecosystem = adding one `Publisher`. Everything above it stays put.
 - [x] `clioil publish` — guided flow (install → test → pack preview → publish → tag), `--dry-run` + power-user flags
 - [x] `ErrorAdvisor` — localized, actionable guidance on publish failures (7 langs)
 - [x] **SwiftUI app** — `ClioilApp`: browse projects, see readiness, and **publish from the window** (reepub-themed). Double-clickable `.app` via `scripts/build-app.sh`.
-- [ ] App: menu-bar (MenuBarExtra) mode; live-streaming publish log
+- [~] App: menu-bar (MenuBarExtra) mode + live-streaming publish log — shipped in
+      code (`MenuBarPublishView`, with cancel) and builds; not yet runtime-dogfooded
+      (a menu-bar GUI can't be verified headlessly, so it stays unchecked until then).
 - [~] **Friendly guidance via Apple Intelligence** — on-device Foundation Models
       translate ugly registry errors into plain-language next steps. *Done:* the
       `publish --ai` remediation hint (on-device first → Claude API only if a key is
