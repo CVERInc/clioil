@@ -49,7 +49,7 @@ struct ContentView: View {
                     .padding(.vertical, 5).padding(.horizontal, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .listRowBackground(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .fill(isSel ? Color.reefTeal : Color.clear)
                             .padding(.vertical, 1)
                     )
@@ -217,7 +217,7 @@ struct ProjectDetailView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(hex: 0x031c1c))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
 
             if let a = publisher.advice {
@@ -232,7 +232,7 @@ struct ProjectDetailView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.reefAmber.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
     }
@@ -292,7 +292,7 @@ struct ProjectDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                         .background(Color(hex: 0x031c1c))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                     Text(t.releaseCommandsHeader()).font(.caption.bold()).foregroundStyle(Color.reefAmber)
                     VStack(alignment: .leading, spacing: 3) {
@@ -304,7 +304,7 @@ struct ProjectDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
                     .background(Color.reefAmber.opacity(0.10))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                     Text(t.releasePrepareOnly()).font(.caption2).foregroundStyle(Color.reefTextDim)
                 }

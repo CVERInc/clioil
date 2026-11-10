@@ -122,7 +122,7 @@ struct MenuBarPublishView: View {
                 }
                 .frame(height: 160)
                 .background(Color(hex: 0x031c1c))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 // Single-arg onChange for macOS 13 compatibility (the two-arg
                 // form is 14+). Auto-scroll to the newest streamed line.
                 .onChange(of: publisher.log.count) { count in
@@ -143,7 +143,7 @@ struct MenuBarPublishView: View {
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.reefAmber.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var footer: some View {
