@@ -9,7 +9,7 @@
 bumping a Homebrew formula's SHA…) into a single guided flow that walks you through it
 instead of leaving you to decode each platform's errors.
 
-It's the productized successor to a personal `發布 npm 專案.command` script: same
+It's the productized successor to a personal one-file publish script: same
 "double-click, pick a project, ship it" feel — but native, multi-ecosystem, and
 friendly enough that you don't need to remember each platform's quirks.
 

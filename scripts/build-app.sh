@@ -15,7 +15,8 @@ swift build -c "$CONFIG" --product ClioilApp
 BIN=".build/$CONFIG/ClioilApp"
 
 rm -rf "$DEST"
-mkdir -p "$DEST/Contents/MacOS"
+mkdir -p "$DEST/Contents/MacOS" "$DEST/Contents/Resources"
+cp Resources/AppIcon.icns "$DEST/Contents/Resources/AppIcon.icns"
 cp "$BIN" "$DEST/Contents/MacOS/ClioilApp"
 
 cat > "$DEST/Contents/Info.plist" <<'PLIST'
@@ -27,6 +28,7 @@ cat > "$DEST/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key><string>clioil</string>
   <key>CFBundleIdentifier</key><string>net.cver.clioil</string>
   <key>CFBundleExecutable</key><string>ClioilApp</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
