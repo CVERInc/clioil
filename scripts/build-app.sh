@@ -15,7 +15,17 @@ swift build -c "$CONFIG" --product ClioilApp
 BIN=".build/$CONFIG/ClioilApp"
 
 rm -rf "$DEST"
-mkdir -p "$DEST/Contents/MacOS"
+mkdir -p "$DEST/Contents/MacOS" "$DEST/Contents/Resources"
+# App icon. macOS 26+ draws a plain .icns shrunk onto a grey plate, so the bundle
+# also carries Assets.car compiled from the Icon Composer source; AppIcon.icns
+# stays as the fallback for macOS 13–15. Assets.car is committed so this script
+# keeps working on plain Command Line Tools. After editing Resources/AppIcon.icon,
+# regenerate it (needs Xcode):
+#   xcrun actool Resources/AppIcon.icon --compile Resources --app-icon AppIcon \
+#     --platform macosx --minimum-deployment-target 13.0 \
+#     --output-partial-info-plist /dev/null
+# then restore Resources/AppIcon.icns (actool overwrites it with a smaller one).
+cp Resources/AppIcon.icns Resources/Assets.car "$DEST/Contents/Resources/"
 cp "$BIN" "$DEST/Contents/MacOS/ClioilApp"
 
 cat > "$DEST/Contents/Info.plist" <<'PLIST'
@@ -27,6 +37,8 @@ cat > "$DEST/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key><string>clioil</string>
   <key>CFBundleIdentifier</key><string>net.cver.clioil</string>
   <key>CFBundleExecutable</key><string>ClioilApp</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
