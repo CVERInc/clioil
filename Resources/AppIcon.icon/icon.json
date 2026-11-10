@@ -1,0 +1,30 @@
+{
+  "fill": {
+    "solid": "srgb:0.08235,0.07451,0.05882,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "drop.svg",
+          "name": "drop",
+          "glass": false
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      },
+      "specular": false
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}
