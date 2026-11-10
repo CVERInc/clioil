@@ -87,6 +87,32 @@ extension L10n {
         }
     }
 
+    public func statusBranch(_ branch: String) -> String {
+        switch language {
+        case .en:   return "Branch: \(branch)"
+        case .es:   return "Rama: \(branch)"
+        case .ja:   return "ブランチ：\(branch)"
+        case .zhTW: return "分支：\(branch)"
+        case .ko:   return "브랜치: \(branch)"
+        case .fr:   return "Branche : \(branch)"
+        case .de:   return "Branch: \(branch)"
+        }
+    }
+
+    /// Asked before a publish from anywhere but the default branch. Names both
+    /// branches so "same version string, different tree" cannot pass unnoticed.
+    public func publishOffBranch(_ branch: String, _ def: String) -> String {
+        switch language {
+        case .en:   return "This checkout is on “\(branch)”, not “\(def)”. Publish from it anyway?"
+        case .es:   return "Esta copia está en «\(branch)», no en «\(def)». ¿Publicar desde aquí de todos modos?"
+        case .ja:   return "このチェックアウトは「\(def)」ではなく「\(branch)」にあります。このまま公開しますか？"
+        case .zhTW: return "這份工作目錄在「\(branch)」，不是「\(def)」。仍要從這裡發布嗎？"
+        case .ko:   return "이 체크아웃은 ‘\(def)’가 아니라 ‘\(branch)’에 있습니다. 그래도 여기서 배포할까요?"
+        case .fr:   return "Cette copie est sur « \(branch) », pas sur « \(def) ». Publier quand même depuis ici ?"
+        case .de:   return "Dieser Checkout ist auf „\(branch)“, nicht auf „\(def)“. Trotzdem von hier veröffentlichen?"
+        }
+    }
+
     public func statusNotGitRepo() -> String {
         switch language {
         case .en:   return "Not a git repository"

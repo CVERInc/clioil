@@ -122,6 +122,64 @@ do {
     check(false, "git test setup threw: \(error)")
 }
 
+print("Checkout — each row says its branch and whether it is a publish source (#2)")
+do {
+    let fm = FileManager.default
+    let repo = fm.temporaryDirectory.appendingPathComponent("clioil-co-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: repo) }
+    try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+    func git(_ args: [String]) { _ = Shell.run(["git"] + args, cwd: repo) }
+    git(["init", "-q", "-b", "main"])
+    git(["config", "user.email", "t@t.test"])
+    git(["config", "user.name", "t"])
+    git(["commit", "--allow-empty", "-q", "-m", "first"])
+
+    var co = Git.checkout(repo)
+    check(co.branch == "main" && co.defaultBranch == "main", "on main; default falls back to local main")
+    check(co.isPublishSource && !co.isOffDefaultBranch, "clean default branch is the publish source")
+
+    git(["checkout", "-q", "-b", "fix-thing"])
+    co = Git.checkout(repo)
+    check(co.branch == "fix-thing" && co.branchLabel == "fix-thing", "reads the feature branch")
+    check(co.isOffDefaultBranch && !co.isPublishSource, "feature branch: off default, not a publish source")
+
+    git(["checkout", "-q", "--detach"])
+    co = Git.checkout(repo)
+    check(co.branch == nil && co.branchLabel == "detached HEAD", "detached HEAD has no branch")
+    check(co.isOffDefaultBranch, "detached HEAD counts as off the default branch")
+
+    git(["checkout", "-q", "main"])
+    try "x".write(to: repo.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
+    co = Git.checkout(repo)
+    check(!co.isPublishSource && !co.isOffDefaultBranch, "dirty default branch: not a publish source, no branch warning")
+
+    // origin/HEAD wins over the local-name fallback.
+    git(["update-ref", "refs/remotes/origin/trunk", "HEAD"])
+    git(["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"])
+    check(Git.defaultBranch(repo) == "trunk", "origin/HEAD names the default branch")
+    check(Git.checkout(repo).isOffDefaultBranch, "main is off-default when origin/HEAD says trunk")
+
+    // No default discoverable → no claim either way.
+    let bare = fm.temporaryDirectory.appendingPathComponent("clioil-co2-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: bare) }
+    try fm.createDirectory(at: bare, withIntermediateDirectories: true)
+    _ = Shell.run(["git", "init", "-q", "-b", "work"], cwd: bare)
+    _ = Shell.run(["git", "-c", "user.email=t@t.test", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "x"], cwd: bare)
+    let unknown = Git.checkout(bare)
+    check(unknown.defaultBranch == nil && !unknown.isOffDefaultBranch && !unknown.isPublishSource,
+          "unknown default branch: neither warned nor marked")
+
+    let none = Git.checkout(fm.temporaryDirectory.appendingPathComponent("nope-\(UUID().uuidString)"))
+    check(!none.isRepo && !none.isOffDefaultBranch && !none.isPublishSource, "non-repo: no claims")
+
+    for lang in Language.allCases {
+        let q = L10n(lang).publishOffBranch("fix-thing", "main")
+        check(q.contains("fix-thing") && q.contains("main"), "\(lang): the off-branch question names both branches")
+    }
+} catch {
+    check(false, "checkout test setup threw: \(error)")
+}
+
 print("StatusService (stubbed registry — no network)")
 struct StubPublisher: Publisher {
     let id = "stub"

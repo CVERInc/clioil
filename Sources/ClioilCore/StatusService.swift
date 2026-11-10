@@ -10,6 +10,8 @@ public struct ProjectStatus: Sendable, Codable {
     public let currentIsPublished: Bool
     public let isGitRepo: Bool
     public let gitDirty: Bool
+    /// Branch + default branch of this checkout (see ``Checkout``).
+    public let checkout: Checkout
     public let lastTag: String?
     public let changesSinceTag: [String]
 
@@ -19,6 +21,7 @@ public struct ProjectStatus: Sendable, Codable {
         currentIsPublished: Bool,
         isGitRepo: Bool,
         gitDirty: Bool,
+        checkout: Checkout? = nil,
         lastTag: String?,
         changesSinceTag: [String]
     ) {
@@ -27,6 +30,8 @@ public struct ProjectStatus: Sendable, Codable {
         self.currentIsPublished = currentIsPublished
         self.isGitRepo = isGitRepo
         self.gitDirty = gitDirty
+        self.checkout = checkout
+            ?? Checkout(isRepo: isGitRepo, branch: nil, defaultBranch: nil, dirty: gitDirty)
         self.lastTag = lastTag
         self.changesSinceTag = changesSinceTag
     }
@@ -42,14 +47,16 @@ public struct StatusService: Sendable {
     }
 
     public func status(of project: Project) -> ProjectStatus {
-        let isRepo = Git.isRepo(project.path)
+        let co = Git.checkout(project.path)
+        let isRepo = co.isRepo
         let tag = isRepo ? Git.lastTag(project.path) : nil
         return ProjectStatus(
             project: project,
             registryLatest: publisher.latestPublishedVersion(of: project),
             currentIsPublished: publisher.versionExists(project.version, of: project),
             isGitRepo: isRepo,
-            gitDirty: isRepo && Git.isDirty(project.path),
+            gitDirty: co.dirty,
+            checkout: co,
             lastTag: tag,
             changesSinceTag: tag.map { Git.commitsSince($0, dir: project.path) } ?? []
         )
