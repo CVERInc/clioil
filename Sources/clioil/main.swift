@@ -176,6 +176,7 @@ func cmdStatus(_ t: L10n, json: Bool, selector: String?) {
         ? t.statusAlreadyPublished(project.version)
         : t.statusReadyToPublish(project.version)))
     if !s.isGitRepo { print("  \(t.statusNotGitRepo())"); return }
+    print("  " + (s.checkout.isOffDefaultBranch ? "⚠ " : "") + t.statusBranch(s.checkout.branchLabel))
     print("  " + (s.gitDirty ? "⚠ " + t.statusGitDirty() : t.statusGitClean()))
     if let tag = s.lastTag {
         if s.changesSinceTag.isEmpty {
@@ -253,6 +254,10 @@ func cmdPublish(_ t: L10n, opts: CLIOptions, selector: String?) {
 
     // 7. confirm + real publish (interactive browser auth)
     if !opts.yes {
+        let co = Git.checkout(project.path)
+        if co.isOffDefaultBranch, let def = co.defaultBranch {
+            print("  ⚠ \(t.publishOffBranch(co.branchLabel, def))")
+        }
         print("  \(t.publishConfirm(project.name, version))")
         if readLine() == nil { print("  \(t.publishAborted())"); exit(0) }
     }

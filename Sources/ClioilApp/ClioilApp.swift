@@ -32,6 +32,7 @@ struct ClioilApp: App {
 struct ContentView: View {
     @State private var projects: [Project] = []
     @State private var selected: Project.ID?
+    @State private var checkouts: [Project.ID: Checkout] = [:]
     private let t = L10n(Language.detect())
 
     var body: some View {
@@ -45,6 +46,9 @@ struct ContentView: View {
                         Text("v\(p.version) · \(p.displayPath)")
                             .font(.caption)
                             .foregroundStyle(isSel ? Color.white.opacity(0.85) : Color.reefTextDim)
+                        if let co = checkouts[p.id], co.isRepo {
+                            CheckoutBadge(checkout: co, t: t, onAccent: isSel)
+                        }
                     }
                     .padding(.vertical, 5).padding(.horizontal, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,6 +91,41 @@ struct ContentView: View {
         projects = ProjectScanner(roots: [home, home.appendingPathComponent("Developer"), home.appendingPathComponent("Desktop/GitHub")], maxDepth: 1)
             .scan()
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
+        let found = projects
+        Task {
+            checkouts = await Task.detached(priority: .userInitiated) {
+                Dictionary(uniqueKeysWithValues: found.map { ($0.id, Git.checkout($0.path)) })
+            }.value
+        }
+    }
+}
+
+/// One line that says which tree a row is: its branch, whether anything is
+/// uncommitted, and a seal on the checkout a release is normally cut from.
+/// Two rows with the same name and version stay tellable apart.
+struct CheckoutBadge: View {
+    let checkout: Checkout
+    let t: L10n
+    var onAccent = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.triangle.branch")
+            Text(checkout.branchLabel).lineLimit(1).truncationMode(.middle)
+            if checkout.dirty {
+                Image(systemName: "pencil.circle.fill")
+                    .foregroundStyle(onAccent ? Color.white : Color.reefAmber)
+                    .help(t.statusGitDirty())
+            }
+            if checkout.isPublishSource {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(onAccent ? Color.white : Color.reefGreen)
+                    .help(t.statusGitClean())
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(onAccent ? Color.white.opacity(0.85)
+                         : (checkout.isOffDefaultBranch ? Color.reefAmber : Color.reefTextDim))
     }
 }
 
@@ -96,6 +135,7 @@ struct ProjectDetailView: View {
     @State private var status: ProjectStatus?
     @State private var loading = true
     @State private var bump: Bump = .none
+    @State private var askBranch: Checkout?
     @StateObject private var publisher = PublishModel()
     @StateObject private var releasePrep = ReleasePrepModel()
 
@@ -141,6 +181,8 @@ struct ProjectDetailView: View {
                 row("checkmark.circle.fill", t.statusReadyToPublish(project.version), .reefGreen)
             }
             if s.isGitRepo {
+                row("arrow.triangle.branch", t.statusBranch(s.checkout.branchLabel),
+                    s.checkout.isOffDefaultBranch ? .reefAmber : .reefTextDim)
                 row(s.gitDirty ? "exclamationmark.triangle.fill" : "checkmark.seal.fill",
                     s.gitDirty ? t.statusGitDirty() : t.statusGitClean(),
                     s.gitDirty ? .reefAmber : .reefGreen)
@@ -174,7 +216,11 @@ struct ProjectDetailView: View {
             .disabled(publisher.running)
 
             Button {
-                publisher.run(project: project, bump: bump, t: t)
+                // Read the branch at the moment of the click, not when the row
+                // loaded: the checkout may have moved since.
+                let co = Git.checkout(project.path)
+                if co.isOffDefaultBranch { askBranch = co }
+                else { publisher.run(project: project, bump: bump, t: t) }
             } label: {
                 Label(t.publishButton(), systemImage: "paperplane.fill")
                     .frame(maxWidth: .infinity)
@@ -183,6 +229,16 @@ struct ProjectDetailView: View {
             .tint(.reefTeal)
             .controlSize(.large)
             .disabled(publisher.running)
+            .confirmationDialog(
+                t.publishOffBranch(askBranch?.branchLabel ?? "", askBranch?.defaultBranch ?? ""),
+                isPresented: Binding(get: { askBranch != nil }, set: { if !$0 { askBranch = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button(t.publishButton()) {
+                    askBranch = nil
+                    publisher.run(project: project, bump: bump, t: t)
+                }
+            }
 
             if publisher.running {
                 HStack(spacing: 8) {

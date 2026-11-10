@@ -13,6 +13,8 @@ struct MenuBarPublishView: View {
     @State private var projects: [Project] = []
     @State private var selected: Project.ID?
     @State private var bump: Bump = .none
+    @State private var checkouts: [Project.ID: Checkout] = [:]
+    @State private var askBranch: Checkout?
     @StateObject private var publisher = PublishModel()
 
     private var current: Project? { projects.first { $0.id == selected } }
@@ -57,7 +59,7 @@ struct MenuBarPublishView: View {
             Text(t.menuBarPickProject()).font(.caption).foregroundStyle(Color.reefTextDim)
             Picker("", selection: $selected) {
                 ForEach(projects) { p in
-                    Text("\(p.name)  v\(p.version)").tag(Optional(p.id))
+                    Text(rowTitle(p)).tag(Optional(p.id))
                 }
             }
             .labelsHidden()
@@ -86,13 +88,26 @@ struct MenuBarPublishView: View {
                 .buttonStyle(.bordered)
             } else {
                 Button {
-                    if let p = current { publisher.run(project: p, bump: bump, t: t) }
+                    guard let p = current else { return }
+                    let co = Git.checkout(p.path)   // at click time, not load time
+                    if co.isOffDefaultBranch { askBranch = co }
+                    else { publisher.run(project: p, bump: bump, t: t) }
                 } label: {
                     Label(t.publishButton(), systemImage: "paperplane.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.reefTeal)
                 .disabled(current == nil)
+                .confirmationDialog(
+                    t.publishOffBranch(askBranch?.branchLabel ?? "", askBranch?.defaultBranch ?? ""),
+                    isPresented: Binding(get: { askBranch != nil }, set: { if !$0 { askBranch = nil } }),
+                    titleVisibility: .visible
+                ) {
+                    Button(t.publishButton()) {
+                        askBranch = nil
+                        if let p = current { publisher.run(project: p, bump: bump, t: t) }
+                    }
+                }
             }
         }
     }
@@ -154,6 +169,13 @@ struct MenuBarPublishView: View {
         }
     }
 
+    /// Name, version and — once known — the branch, so two checkouts of one
+    /// package are not the same line in the picker.
+    private func rowTitle(_ p: Project) -> String {
+        guard let co = checkouts[p.id], co.isRepo else { return "\(p.name)  v\(p.version)" }
+        return "\(p.name)  v\(p.version)  ·  \(co.branchLabel)\(co.dirty ? " *" : "")"
+    }
+
     private func loadIfNeeded() {
         guard projects.isEmpty else { return }
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -162,5 +184,11 @@ struct MenuBarPublishView: View {
             .scan()
             .sorted { $0.name.lowercased() < $1.name.lowercased() }
         if selected == nil { selected = projects.first?.id }
+        let found = projects
+        Task {
+            checkouts = await Task.detached(priority: .userInitiated) {
+                Dictionary(uniqueKeysWithValues: found.map { ($0.id, Git.checkout($0.path)) })
+            }.value
+        }
     }
 }
